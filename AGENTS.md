@@ -112,10 +112,25 @@ To catch vulnerabilities, enforce policy, and audit shipping binaries, ensure th
 
 3. **Binary Auditing via cargo-auditable**
 
-   * **Install**:
+   * **Install**: The crate is published as `auditable`, so install without the `cargo-` prefix and pin to the `auditable` crate name:
 
      ```sh
-     cargo install --version ^0.2 cargo-auditable
+     # Ensure the local registry is up-to-date (if not offline)
+     cargo update -p auditable
+     # Install the binary from the auditable crate
+     cargo install auditable --version ^0.2
+     ```
+   * **Embed metadata**: Add a build script (`build.rs`) or CI step to run:
+
+     ```sh
+     cargo auditable generate --output src/built_info.rs
+     ```
+
+     and include it in your binary to expose dependency PKGs and versions.
+   * **Runtime check**: In production or CI, run:
+
+     ```sh
+     cargo audit --json <binary_path>
      ```
    * **Embed metadata**: Add a build script (`build.rs`) or CI step to run:
 
@@ -131,3 +146,4 @@ To catch vulnerabilities, enforce policy, and audit shipping binaries, ensure th
      ```
 
 *End of AGENTS.md*
+
