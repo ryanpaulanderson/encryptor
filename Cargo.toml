@@ -1,0 +1,13 @@
+[package]
+name = "encryptor"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+rand = "0.8"
+anyhow = "1.0"
+argon2 = "0.4"
+zeroize = "1.5"
+sha2 = "0.10"
+hex = "0.4"
