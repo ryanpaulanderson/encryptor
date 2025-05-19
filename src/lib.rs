@@ -1,4 +1,4 @@
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use argon2::{Algorithm, Argon2, Params, Version};
 #[cfg(unix)]
 use libc::{mlock, munlock};
@@ -120,8 +120,8 @@ pub fn chacha20_block(key: &[u8; 32], counter: u32, nonce: &[u8; 12]) -> [u8; 64
 
 pub fn poly1305_tag(r: &u128, s: &u128, aad: &[u8], ciphertext: &[u8]) -> [u8; 16] {
     use poly1305::{
-        Block, Key, Poly1305,
         universal_hash::{KeyInit, UniversalHash},
+        Block, Key, Poly1305,
     };
 
     let mut key_bytes = [0u8; 32];
