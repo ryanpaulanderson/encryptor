@@ -1,0 +1,51 @@
+name: CD
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          components: rustfmt, clippy
+      - name: Format
+        run: cargo fmt -- --check
+      - name: Lint
+        run: cargo clippy -- -D warnings
+      - name: Test
+        run: cargo test --offline
+      - name: Build
+        run: cargo build --release
+      - name: Get version
+        id: version
+        run: echo "version=$(grep '^version' Cargo.toml | head -n1 | cut -d '"' -f2)" >> "$GITHUB_OUTPUT"
+      - name: Archive binary
+        run: |
+          mkdir artifacts
+          cp target/release/chacha20_poly1305 artifacts/
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          release_name: v${{ steps.version.outputs.version }}
+          draft: false
+          prerelease: false
+      - name: Upload Release Asset
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: artifacts/chacha20_poly1305
+          asset_name: chacha20_poly1305
+          asset_content_type: application/octet-stream
