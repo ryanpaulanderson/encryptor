@@ -183,3 +183,4 @@ cython_debug/
 .cargo
 *cargo.lock
 *cargo.LOCK
+*.Cargo.lock
