@@ -1,0 +1,7 @@
+[sources.crates-io]
+
+[[licenses.ban]]
+name = "GPL-3.0"
+
+[advisories]
+deny-warnings = true
