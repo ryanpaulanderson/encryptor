@@ -54,6 +54,11 @@ Example decrypt with integrity check:
 chacha20_poly1305 decrypt secret.bin plain.txt mypassword --verify-hash <hash>
 ```
 
+## Security Notes
+
+This tool reads input files using a constant-time routine and performs all tag
+comparisons using constant-time equality checks to reduce timing side channels.
+
 ## Running Tests
 
 To run tests without a network connection you must prefetch the dependencies

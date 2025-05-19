@@ -1,4 +1,6 @@
-use encryptor::{Argon2Config, chacha20_block, ct_eq, derive_key, encrypt_decrypt, poly1305_tag};
+use encryptor::{
+    Argon2Config, chacha20_block, ct_eq, derive_key, encrypt_decrypt, poly1305_tag, read_file_ct,
+};
 
 #[test]
 fn encrypt_decrypt_roundtrip() {
@@ -172,4 +174,23 @@ fn cli_argon2_flags_parse() {
     assert_eq!(args.mem_size, 128);
     assert_eq!(args.iterations, 5);
     assert_eq!(args.parallelism, 3);
+}
+
+#[test]
+fn read_file_ct_matches_std() {
+    use std::fs::{self, File};
+    use std::io::Write;
+    let path = "test_read_ct.tmp";
+    let mut f = File::create(path).unwrap();
+    f.write_all(b"data").unwrap();
+    let expected = fs::read(path).unwrap();
+    let actual = read_file_ct(&std::path::PathBuf::from(path)).unwrap();
+    assert_eq!(expected, actual);
+    fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn read_file_ct_error() {
+    let result = read_file_ct(&std::path::PathBuf::from("does_not_exist"));
+    assert!(result.is_err());
 }
