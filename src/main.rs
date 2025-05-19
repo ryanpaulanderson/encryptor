@@ -8,6 +8,12 @@
 // sha2 = "0.10"
 // hex = "0.4"
 
+// Include dependency metadata for cargo-auditable
+#[allow(dead_code)]
+mod built_info {
+    include!(concat!(env!("OUT_DIR"), "/built_info.rs"));
+}
+
 use anyhow::{Result, bail};
 use clap::{Args, Parser, Subcommand};
 use rand::{RngCore, rngs::OsRng};

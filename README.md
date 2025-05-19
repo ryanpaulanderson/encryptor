@@ -93,6 +93,9 @@ Merges to the `main` branch trigger a GitHub Actions workflow that
 formats the code, lints with Clippy, runs the test suite and builds a
 release binary. The resulting executable is published as a GitHub
 release using the crate version from `Cargo.toml`.
+Additional steps scan for vulnerable dependencies with `cargo-audit`,
+enforce licensing policy via `cargo-deny` and embed dependency
+metadata using `cargo-auditable` through the build script.
 
 ## Attack Vectors and Known Issues
 
