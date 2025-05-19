@@ -36,3 +36,55 @@ fn poly1305_tag_detects_modification() {
     let wrong_tag = poly1305_tag(&r, &s, header, &ciphertext);
     assert!(!ct_eq(&tag, &wrong_tag));
 }
+
+#[test]
+fn tampered_ciphertext_fails_to_authenticate() {
+    let password = "pw";
+    let salt = [3u8; 16];
+    let nonce = [4u8; 12];
+    let key = derive_key(password, &salt).unwrap();
+    let block0 = chacha20_block(&key, 0, &nonce);
+    let mut r_bytes = [0u8;16];
+    r_bytes.copy_from_slice(&block0[..16]);
+    let mut s_bytes = [0u8;16];
+    s_bytes.copy_from_slice(&block0[16..32]);
+    r_bytes[3] &= 15; r_bytes[7] &= 15; r_bytes[11] &= 15; r_bytes[15] &= 15;
+    r_bytes[4] &= 252; r_bytes[8] &= 252; r_bytes[12] &= 252;
+    let r = u128::from_le_bytes(r_bytes);
+    let s = u128::from_le_bytes(s_bytes);
+    let header = b"hdr";
+    let plaintext = b"secret";
+    let ciphertext = encrypt_decrypt(plaintext, &key, &nonce);
+    let tag = poly1305_tag(&r, &s, header, &ciphertext);
+
+    let mut tampered = ciphertext.clone();
+    tampered[1] ^= 0x80;
+    let expected = poly1305_tag(&r, &s, header, &tampered);
+    assert!(!ct_eq(&tag, &expected));
+    let decrypted = encrypt_decrypt(&tampered, &key, &nonce);
+    assert_ne!(plaintext.to_vec(), decrypted);
+}
+
+#[test]
+fn tampered_tag_fails_to_authenticate() {
+    let password = "pw2";
+    let salt = [5u8; 16];
+    let nonce = [6u8; 12];
+    let key = derive_key(password, &salt).unwrap();
+    let block0 = chacha20_block(&key, 0, &nonce);
+    let mut r_bytes = [0u8;16];
+    r_bytes.copy_from_slice(&block0[..16]);
+    let mut s_bytes = [0u8;16];
+    s_bytes.copy_from_slice(&block0[16..32]);
+    r_bytes[3] &= 15; r_bytes[7] &= 15; r_bytes[11] &= 15; r_bytes[15] &= 15;
+    r_bytes[4] &= 252; r_bytes[8] &= 252; r_bytes[12] &= 252;
+    let r = u128::from_le_bytes(r_bytes);
+    let s = u128::from_le_bytes(s_bytes);
+    let header = b"hdr2";
+    let plaintext = b"data";
+    let ciphertext = encrypt_decrypt(plaintext, &key, &nonce);
+    let mut tag = poly1305_tag(&r, &s, header, &ciphertext);
+    tag[0] ^= 0x01;
+    let expected = poly1305_tag(&r, &s, header, &ciphertext);
+    assert!(!ct_eq(&tag, &expected));
+}
