@@ -53,7 +53,7 @@ jobs:
         run: cargo test --offline
 
       - name: Security audit
-        run: cargo audit --locked --deny warnings
+        run: cargo audit --deny warnings
 
       - name: Build
         run: cargo build --release
