@@ -44,4 +44,4 @@ jobs:
           cargo fmt -- --check
           cargo clippy -- -D warnings
           cargo test --offline
-          cargo audit --locked --deny warnings
+          cargo audit --deny warnings
