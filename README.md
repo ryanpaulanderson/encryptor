@@ -90,9 +90,16 @@ This will compile the project and execute the tests found in the `tests/` direct
 ## Continuous Deployment
 
 Merges to the `main` branch trigger a GitHub Actions workflow that
-formats the code, lints with Clippy, runs the test suite and builds a
-release binary. The resulting executable is published as a GitHub
-release using the crate version from `Cargo.toml`.
+formats the code, lints with Clippy, runs the test suite, performs a
+`cargo audit` vulnerability scan and builds a release binary. The
+resulting executables for Linux and macOS are published as GitHub release
+artifacts using the crate version from `Cargo.toml`. Binaries are built
+for `x86_64-unknown-linux-gnu`, `x86_64-apple-darwin` and
+`aarch64-apple-darwin`. Releases run the same audit before publishing
+artifacts.
+
+An additional verification workflow executes the [Prusti](https://github.com/viperproject/prusti-dev)
+tool to prove selected invariants in the cipher implementation.
 
 ## Attack Vectors and Known Issues
 

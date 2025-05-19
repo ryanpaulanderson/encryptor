@@ -3,14 +3,15 @@ export CARGO_NET_OFFLINE=false
 
 rustup component add rustfmt
 rustup component add clippy
+cargo install --version ^0.17 cargo-audit
 
-# 2. Generate or update Cargo.lock (needed so vendor knows exactly what to pull) :contentReference[oaicite:0]{index=0}
+# 2. Generate or update Cargo.lock (needed so vendor knows exactly what to pull)
 cargo generate-lockfile
 
-# 3. Vendor ALL direct+transitive crates locally :contentReference[oaicite:1]{index=1}
+# 3. Vendor ALL direct+transitive crates locally
 cargo vendor
 
-# 4. Now lock down to offline-only mode :contentReference[oaicite:2]{index=2}
+# 4. Now lock down to offline-only mode
 export CARGO_NET_OFFLINE=true
 
 # 5. Tell Cargo where to find vendored crates
