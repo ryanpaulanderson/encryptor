@@ -9,26 +9,45 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      # 1. Checkout your code
       - uses: actions/checkout@v4
+
+      # 2. Install Rust + rustfmt & Clippy
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
           override: true
           components: rustfmt, clippy
-      - name: Cache cargo
+
+      # 3. Cache your vendored crates
+      - name: Cache Cargo registry & vendor
         uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
             vendor
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-reg-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-reg-
+
+      # 4. Cache installed binaries (cargo-audit, cargo-deny)
+      - name: Cache Cargo bin
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin
+          key: ${{ runner.os }}-cargo-bin-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-bin-
+
+      # 5. Install security tools in parallel
       - name: Install security tools
         run: |
-          cargo install --version ^0.17 cargo-audit
-          cargo install --version ^0.11 cargo-deny
-          cargo install --version ^0.2 auditable
-      - name: Run checks
+          cargo install cargo-audit   --locked --version ^0.21 --jobs 4  # CVE scans :contentReference[oaicite:0]{index=0}
+          cargo install cargo-deny    --locked --version ^0.18 --jobs 4  # License/policy :contentReference[oaicite:1]{index=1}
+
+      # 6. Code-quality checks
+      - name: Run fmt, clippy, tests & security checks
         run: |
           cargo fmt -- --check
           cargo clippy -- -D warnings

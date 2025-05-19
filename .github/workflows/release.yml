@@ -1,9 +1,9 @@
+# .github/workflows/cd.yml
 name: CD
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
 
 permissions:
   contents: write
@@ -11,35 +11,78 @@ permissions:
 jobs:
   build-release:
     runs-on: ubuntu-latest
+
     steps:
+      # 1. Checkout
       - uses: actions/checkout@v3
         with:
           fetch-depth: 0
+
+      # 2. Rust setup with rustfmt & clippy
       - name: Set up Rust
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
           profile: minimal
           components: rustfmt, clippy
+
+      # 3. Cache registry, git index, and vendored crates
+      - name: Cache Cargo registry & vendor
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            vendor
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-registry-
+
+      # 4. Cache installed binaries (security tools)
+      - name: Cache Cargo bin
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin
+          key: ${{ runner.os }}-cargo-bin-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-bin-
+
+      # 5. Install security tools in parallel
       - name: Install security tools
         run: |
-          cargo install --version ^0.17 cargo-audit
-          cargo install --version ^0.11 cargo-deny
-          cargo install --version ^0.2 auditable
+          cargo install cargo-audit       --locked --version ^0.21 --jobs 4
+          cargo install cargo-deny        --locked --version ^0.18 --jobs 4
+          cargo install cargo-auditable   --locked --version ^0.6  --jobs 4
+
+      # 6. Formatting check
       - name: Format
         run: cargo fmt -- --check
+
+      # 7. Linting
       - name: Lint
         run: cargo clippy -- -D warnings
+
+      # 8. Tests (offline)
       - name: Test
         run: cargo test --offline
+
+      # 9. Dependency vulnerability scan
       - name: Dependency audit
         run: cargo audit --deny warnings
-      - name: Build
+
+      # 10. Build with embedded auditable metadata
+      - name: Build (release with auditable)
         run: cargo auditable build --release
+
+      # 11. Policy enforcement
       - name: Policy check
         run: cargo deny check
+
+      # 12. Binary audit on the produced artifact
       - name: Binary audit
         run: cargo audit --json target/release/chacha20_poly1305
+
+      # 13. Determine next version
       - name: Determine next version
         id: version
         run: |
@@ -55,10 +98,14 @@ jobs:
             version="$major.$minor.0"
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      # 14. Package the binary
       - name: Archive binary
         run: |
-          mkdir artifacts
+          mkdir -p artifacts
           cp target/release/chacha20_poly1305 artifacts/
+
+      # 15. Create GitHub Release
       - name: Create Release
         id: create_release
         uses: actions/create-release@v1
@@ -69,6 +116,8 @@ jobs:
           release_name: v${{ steps.version.outputs.version }}
           draft: false
           prerelease: false
+
+      # 16. Upload Release Asset
       - name: Upload Release Asset
         uses: actions/upload-release-asset@v1
         env:
