@@ -13,6 +13,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
       - name: Set up Rust
         uses: actions-rs/toolchain@v1
         with:
@@ -27,9 +29,21 @@ jobs:
         run: cargo test --offline
       - name: Build
         run: cargo build --release
-      - name: Get version
+      - name: Determine next version
         id: version
-        run: echo "version=$(grep '^version' Cargo.toml | head -n1 | cut -d '"' -f2)" >> "$GITHUB_OUTPUT"
+        run: |
+          latest_tag=$(git tag --list 'v*.*.*' --sort=-v:refname | head -n1)
+          if [ -z "$latest_tag" ]; then
+            version="0.1.0"
+          else
+            ver=${latest_tag#v}
+            major=${ver%%.*}
+            rest=${ver#*.}
+            minor=${rest%%.*}
+            minor=$((minor+1))
+            version="$major.$minor.0"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
       - name: Archive binary
         run: |
           mkdir artifacts
