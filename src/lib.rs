@@ -27,13 +27,33 @@ impl Default for Argon2Config {
 }
 
 #[cfg(unix)]
-pub fn unlock(buf: &[u8]) {
-    unsafe { munlock(buf.as_ptr() as *const _, buf.len()) };
+pub fn unlock(buf: &[u8]) -> std::io::Result<()> {
+    let ret = unsafe { munlock(buf.as_ptr() as *const _, buf.len()) };
+    if ret == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
 }
 
 #[cfg(unix)]
-pub fn lock(buf: &[u8]) {
-    unsafe { mlock(buf.as_ptr() as *const _, buf.len()) };
+pub fn lock(buf: &[u8]) -> std::io::Result<()> {
+    let ret = unsafe { mlock(buf.as_ptr() as *const _, buf.len()) };
+    if ret == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
+}
+
+#[cfg(not(unix))]
+pub fn lock(_buf: &[u8]) -> std::io::Result<()> {
+    Ok(())
+}
+
+#[cfg(not(unix))]
+pub fn unlock(_buf: &[u8]) -> std::io::Result<()> {
+    Ok(())
 }
 
 pub fn derive_key(password: &str, salt: &[u8], cfg: &Argon2Config) -> Result<[u8; 32]> {
@@ -41,11 +61,11 @@ pub fn derive_key(password: &str, salt: &[u8], cfg: &Argon2Config) -> Result<[u8
         .map_err(|e| anyhow!(e))?;
     let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
     let mut key = [0u8; 32];
-    #[cfg(unix)]
-    lock(&key);
+    lock(&key)?;
     argon2
         .hash_password_into(password.as_bytes(), salt, &mut key)
         .map_err(|e| anyhow!(e))?;
+    unlock(&key)?;
     Ok(key)
 }
 
@@ -67,10 +87,10 @@ fn quarter_round(state: &mut [u32; 16], a: usize, b: usize, c: usize, d: usize) 
 pub fn chacha20_block(key: &[u8; 32], counter: u32, nonce: &[u8; 12]) -> [u8; 64] {
     let constants: [u8; 16] = *b"expand 32-byte k";
     let mut state = [0u32; 16];
-    #[cfg(unix)]
-    unsafe {
-        mlock(state.as_ptr() as *const _, std::mem::size_of_val(&state));
-    }
+    let state_bytes = unsafe {
+        std::slice::from_raw_parts(state.as_ptr() as *const u8, std::mem::size_of_val(&state))
+    };
+    lock(state_bytes).ok();
     for i in 0..4 {
         state[i] = u32::from_le_bytes(constants[4 * i..4 * i + 4].try_into().unwrap());
     }
@@ -82,13 +102,13 @@ pub fn chacha20_block(key: &[u8; 32], counter: u32, nonce: &[u8; 12]) -> [u8; 64
         state[13 + i] = u32::from_le_bytes(nonce[4 * i..4 * i + 4].try_into().unwrap());
     }
     let mut working = state;
-    #[cfg(unix)]
-    unsafe {
-        mlock(
-            working.as_ptr() as *const _,
+    let working_bytes = unsafe {
+        std::slice::from_raw_parts(
+            working.as_ptr() as *const u8,
             std::mem::size_of_val(&working),
-        );
-    }
+        )
+    };
+    lock(working_bytes).ok();
     for _ in 0..10 {
         quarter_round(&mut working, 0, 4, 8, 12);
         quarter_round(&mut working, 1, 5, 9, 13);
@@ -107,14 +127,8 @@ pub fn chacha20_block(key: &[u8; 32], counter: u32, nonce: &[u8; 12]) -> [u8; 64
         block[4 * i..4 * i + 4].copy_from_slice(&working[i].to_le_bytes());
     }
     working.zeroize();
-    #[cfg(unix)]
-    unsafe {
-        munlock(
-            working.as_ptr() as *const _,
-            std::mem::size_of_val(&working),
-        );
-        munlock(state.as_ptr() as *const _, std::mem::size_of_val(&state));
-    }
+    unlock(working_bytes).ok();
+    unlock(state_bytes).ok();
     block
 }
 
@@ -127,6 +141,7 @@ pub fn poly1305_tag(r: &u128, s: &u128, aad: &[u8], ciphertext: &[u8]) -> [u8; 1
     let mut key_bytes = [0u8; 32];
     key_bytes[..16].copy_from_slice(&r.to_le_bytes());
     key_bytes[16..].copy_from_slice(&s.to_le_bytes());
+    lock(&key_bytes).ok();
     let mut poly = Poly1305::new(Key::from_slice(&key_bytes));
 
     poly.update_padded(aad);
@@ -140,6 +155,9 @@ pub fn poly1305_tag(r: &u128, s: &u128, aad: &[u8], ciphertext: &[u8]) -> [u8; 1
     let tag = poly.finalize();
     let mut out = [0u8; 16];
     out.copy_from_slice(tag.as_slice());
+    unlock(&key_bytes).ok();
+    key_bytes.zeroize();
+    len_block.zeroize();
     out
 }
 
@@ -179,4 +197,20 @@ pub fn encrypt_decrypt(data: &[u8], key: &[u8; 32], nonce: &[u8; 12]) -> Vec<u8>
         ks.zeroize();
     }
     out
+}
+
+pub fn encrypt_decrypt_in_place(
+    data: &mut [u8],
+    key: &[u8; 32],
+    nonce: &[u8; 12],
+    counter: &mut u32,
+) {
+    for chunk in data.chunks_mut(64) {
+        let mut ks = chacha20_block(key, *counter, nonce);
+        *counter = counter.wrapping_add(1);
+        for (i, b) in chunk.iter_mut().enumerate() {
+            *b ^= ks[i];
+        }
+        ks.zeroize();
+    }
 }
