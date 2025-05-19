@@ -33,8 +33,9 @@ jobs:
         env:
           CODEQL_ENABLE_EXPERIMENTAL_FEATURES: 'true'
 
-      - name: Build
-        run: cargo build --release
+      - name: Build all Rust targets
+        # this replaces `cargo build --release`
+        run: cargo build --workspace --all-targets --release
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
