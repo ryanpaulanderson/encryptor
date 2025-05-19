@@ -28,7 +28,8 @@ The resulting binary will be located at `target/release/chacha20_poly1305`.
 ## Usage
 
 ```
-chacha20_poly1305 <encrypt|decrypt> <INPUT> <OUTPUT> <PASSWORD> [--verify-hash <HEX>]
+chacha20_poly1305 <encrypt|decrypt> <INPUT> <OUTPUT> <PASSWORD> \
+    [--verify-hash <HEX>] [--mem-size <MiB>] [--iterations <N>] [--parallelism <N>]
 ```
 
 Arguments:
@@ -37,6 +38,9 @@ Arguments:
 - `OUTPUT` – path of the file to write.
 - `PASSWORD` – password used for the Argon2 key derivation.
 - `--verify-hash` – optional hex-encoded SHA256 hash of the encrypted file to verify before decryption.
+- `--mem-size` – Argon2 memory usage in MiB (default: 64).
+- `--iterations` – Argon2 iterations/passes (default: 4).
+- `--parallelism` – Argon2 parallelism degree (default: 1).
 
 Example encrypt:
 
