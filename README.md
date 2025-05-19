@@ -73,6 +73,6 @@ This will compile the project and execute the tests found in the `tests/` direct
 
 ## Attack Vectors and Known Issues
 
-- **Nonce reuse**: the tool relies on randomly generated nonces but does not enforce uniqueness. Reusing the same password and nonce combination can reveal information about the plaintext.
+- **Nonce reuse**: nonces are now deterministically derived from each encryption's random salt, ensuring a unique nonce whenever the salt is unique.
 - **Home-grown ChaCha20 implementation**: the `chacha20_block` routine in `src/lib.rs` implements the cipher manually and has not been audited for constant-time behavior or correctness.
 - **Low Argon2 parameters**: default KDF parameters are set to 64 MiB memory and 4 iterations which may not be sufficient against determined attackers. Adjust `--mem-size`, `--iterations` and `--parallelism` as needed.

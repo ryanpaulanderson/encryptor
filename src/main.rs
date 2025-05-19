@@ -79,8 +79,11 @@ fn main() -> Result<()> {
         let mut salt = [0u8; 16];
         OsRng.fill_bytes(&mut salt);
         header.extend_from_slice(&salt);
+        // derive nonce deterministically from the random salt to avoid accidental reuse
+        let mut hash: [u8; 32] = Sha256::digest(salt).into();
         let mut nonce = [0u8; 12];
-        OsRng.fill_bytes(&mut nonce);
+        nonce.copy_from_slice(&hash[..12]);
+        hash.zeroize();
         header.extend_from_slice(&nonce);
         let mut key = derive_key(&args.password, &salt, &cfg)?;
         let mut block0 = chacha20_block(&key, 0, &nonce);
