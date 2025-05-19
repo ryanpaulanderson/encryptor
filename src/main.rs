@@ -8,17 +8,17 @@
 // sha2 = "0.10"
 // hex = "0.4"
 
-use anyhow::{Result, bail};
+use anyhow::{bail, Result};
 use clap::{Args, Parser, Subcommand};
-use rand::{RngCore, rngs::OsRng};
+use rand::{rngs::OsRng, RngCore};
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::PathBuf;
 use zeroize::Zeroize;
 
 use encryptor::{
-    Argon2Config, HEADER_LEN, MAGIC, chacha20_block, ct_eq, derive_key, encrypt_decrypt,
-    poly1305_tag, read_file_ct, unlock,
+    chacha20_block, ct_eq, derive_key, encrypt_decrypt, poly1305_tag, read_file_ct, unlock,
+    Argon2Config, HEADER_LEN, MAGIC,
 };
 
 #[derive(Parser)]

@@ -1,5 +1,5 @@
 use encryptor::{
-    Argon2Config, chacha20_block, ct_eq, derive_key, encrypt_decrypt, poly1305_tag, read_file_ct,
+    chacha20_block, ct_eq, derive_key, encrypt_decrypt, poly1305_tag, read_file_ct, Argon2Config,
 };
 
 #[test]
