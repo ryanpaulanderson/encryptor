@@ -9,6 +9,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+      - name: Pin base64ct for Prusti
+        run: cargo update -p base64ct --precise 1.7.2
 
       - name: Run Prusti verifier
         uses: viperproject/prusti-action@v1
