@@ -76,4 +76,3 @@ This will compile the project and execute the tests found in the `tests/` direct
 - **Nonce reuse**: the tool relies on randomly generated nonces but does not enforce uniqueness. Reusing the same password and nonce combination can reveal information about the plaintext.
 - **Home-grown ChaCha20 implementation**: the `chacha20_block` routine in `src/lib.rs` implements the cipher manually and has not been audited for constant-time behavior or correctness.
 - **Low Argon2 parameters**: default KDF parameters are set to 64 MiB memory and 4 iterations which may not be sufficient against determined attackers. Adjust `--mem-size`, `--iterations` and `--parallelism` as needed.
-- **CLI argument order**: the actual invocation format is `[INPUT] [OUTPUT] [PASSWORD] <encrypt|decrypt>` as seen in the tests. Passing arguments in the order shown above will fail.

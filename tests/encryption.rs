@@ -133,11 +133,15 @@ fn derive_key_custom_params() {
 
 #[test]
 fn cli_argon2_flags_parse() {
-    use clap::{Parser, Subcommand};
+    use clap::{Args, Parser, Subcommand};
     #[derive(Parser)]
-    struct Args {
+    struct Cli {
         #[command(subcommand)]
-        mode: Mode,
+        command: Command,
+    }
+
+    #[derive(Args)]
+    struct Opts {
         input_file: std::path::PathBuf,
         output_file: std::path::PathBuf,
         password: String,
@@ -152,13 +156,14 @@ fn cli_argon2_flags_parse() {
     }
 
     #[derive(Subcommand)]
-    enum Mode {
-        Encrypt,
-        Decrypt,
+    enum Command {
+        Encrypt(Opts),
+        Decrypt(Opts),
     }
 
-    let args = Args::parse_from([
+    let cli = Cli::parse_from([
         "test",
+        "encrypt",
         "--mem-size",
         "128",
         "--iterations",
@@ -168,12 +173,15 @@ fn cli_argon2_flags_parse() {
         "in",
         "out",
         "pw",
-        "encrypt",
     ]);
 
-    assert_eq!(args.mem_size, 128);
-    assert_eq!(args.iterations, 5);
-    assert_eq!(args.parallelism, 3);
+    if let Command::Encrypt(opts) = cli.command {
+        assert_eq!(opts.mem_size, 128);
+        assert_eq!(opts.iterations, 5);
+        assert_eq!(opts.parallelism, 3);
+    } else {
+        panic!("Expected encrypt command");
+    }
 }
 
 #[test]
