@@ -1,0 +1,16 @@
+name: Verification
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  prusti:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Run Prusti
+        uses: viperproject/prusti-action@v1
+        with:
+          args: cargo-prusti --manifest-path Cargo.toml
+

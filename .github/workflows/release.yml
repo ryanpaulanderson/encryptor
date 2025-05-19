@@ -16,17 +16,36 @@ jobs:
         with:
           fetch-depth: 0
       - name: Set up Rust
-        uses: actions-rs/toolchain@v1
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        profile: minimal
+        components: rustfmt, clippy
+      - name: Cache cargo
+        uses: actions/cache@v4
         with:
-          toolchain: stable
-          profile: minimal
-          components: rustfmt, clippy
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            vendor
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - name: Cache cargo-audit
+        id: cache-audit
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/cargo-audit
+          key: ${{ runner.os }}-cargo-audit-${{ hashFiles('**/Cargo.lock') }}
+      - name: Install cargo-audit
+        if: steps.cache-audit.outputs.cache-hit != 'true'
+        run: cargo install --version ^0.17 cargo-audit
       - name: Format
         run: cargo fmt -- --check
       - name: Lint
         run: cargo clippy -- -D warnings
       - name: Test
         run: cargo test --offline
+      - name: Security audit
+        run: cargo audit --locked --deny warnings
       - name: Build
         run: cargo build --release
       - name: Determine next version

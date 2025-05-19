@@ -16,15 +16,25 @@ jobs:
           override: true
           components: rustfmt, clippy
       - name: Cache cargo
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          vendor
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - name: Cache cargo-audit
+        id: cache-audit
         uses: actions/cache@v4
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            vendor
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          path: ~/.cargo/bin/cargo-audit
+          key: ${{ runner.os }}-cargo-audit-${{ hashFiles('**/Cargo.lock') }}
+      - name: Install cargo-audit
+        if: steps.cache-audit.outputs.cache-hit != 'true'
+        run: cargo install --version ^0.17 cargo-audit
       - name: Run checks
         run: |
           cargo fmt -- --check
           cargo clippy -- -D warnings
           cargo test --offline
+          cargo audit --locked --deny warnings

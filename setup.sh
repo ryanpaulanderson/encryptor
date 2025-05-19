@@ -3,6 +3,7 @@ export CARGO_NET_OFFLINE=false
 
 rustup component add rustfmt
 rustup component add clippy
+cargo install --version ^0.17 cargo-audit
 
 # 2. Generate or update Cargo.lock (needed so vendor knows exactly what to pull) :contentReference[oaicite:0]{index=0}
 cargo generate-lockfile
