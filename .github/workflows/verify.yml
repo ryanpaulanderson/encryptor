@@ -14,6 +14,6 @@ jobs:
         uses: viperproject/prusti-action@v1
         with:
           path: "."             # your crate root (where Cargo.toml lives)
-          version: "nightly"    # pick the nightly toolchain Prusti needs
+          version: "2021"    # pick the nightly toolchain Prusti needs
           verify-crate: true    # run full crate verification
 
