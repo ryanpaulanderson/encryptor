@@ -1,5 +1,4 @@
 name: CD
-
 on:
   push:
     branches:
@@ -11,6 +10,8 @@ permissions:
 jobs:
   build-release:
     runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
     steps:
       - uses: actions/checkout@v3
         with:
@@ -98,4 +99,37 @@ jobs:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: artifacts/chacha20_poly1305
           asset_name: chacha20_poly1305
+          asset_content_type: application/octet-stream
+
+  build-macos:
+    needs: build-release
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        target: [x86_64-apple-darwin, aarch64-apple-darwin]
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+
+      - name: Add target
+        run: rustup target add ${{ matrix.target }}
+
+      - name: Build
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Upload Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.build-release.outputs.upload_url }}
+          asset_path: target/${{ matrix.target }}/release/chacha20_poly1305
+          asset_name: chacha20_poly1305-${{ matrix.target }}
           asset_content_type: application/octet-stream
