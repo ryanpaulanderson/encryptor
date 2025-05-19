@@ -2,6 +2,9 @@ use anyhow::{Result, anyhow};
 use argon2::{Algorithm, Argon2, Params, Version};
 #[cfg(unix)]
 use libc::{mlock, munlock};
+use std::fs::File;
+use std::io::Read;
+use std::path::Path;
 use zeroize::Zeroize;
 
 pub const MAGIC: &[u8; 4] = b"CPV1"; // ChaChaPoly AEAD v1
@@ -147,6 +150,23 @@ pub fn ct_eq(a: &[u8], b: &[u8]) -> bool {
             .map(|(&x, &y)| x ^ y)
             .fold(0, |acc, z| acc | z)
             == 0
+}
+
+/// Read an entire file while using the same code path on success or failure.
+pub fn read_file_ct(path: &Path) -> Result<Vec<u8>> {
+    let mut buf = Vec::new();
+    let dummy = [0u8; 1];
+    match File::open(path) {
+        Ok(mut f) => {
+            f.read_to_end(&mut buf)?;
+        }
+        Err(e) => {
+            let mut empty = &dummy[..];
+            let _ = empty.read_to_end(&mut buf);
+            return Err(anyhow!(e));
+        }
+    }
+    Ok(buf)
 }
 
 pub fn encrypt_decrypt(data: &[u8], key: &[u8; 32], nonce: &[u8; 12]) -> Vec<u8> {
