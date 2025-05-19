@@ -9,8 +9,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - name: Run Prusti
+
+      - name: Run Prusti verifier
         uses: viperproject/prusti-action@v1
         with:
-          args: cargo-prusti --manifest-path Cargo.toml
+          path: "."             # your crate root (where Cargo.toml lives)
+          version: "nightly"    # pick the nightly toolchain Prusti needs
+          verify-crate: true    # run full crate verification
 
