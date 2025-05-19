@@ -17,6 +17,12 @@ sudo ./setup.sh
 The script installs required system packages, sets up `rustup` if `rustc` is not present and fetches all crate dependencies.
 If you already have Rust installed you can skip it and simply run `cargo fetch`.
 
+After installing the toolchain you can vendor the dependencies and compile the binary in one step using the `build.sh` helper script:
+
+```bash
+./build.sh
+```
+
 ## Building
 
 ```bash
@@ -24,6 +30,16 @@ cargo build --release
 ```
 
 The resulting binary will be located at `target/release/chacha20_poly1305`.
+
+## Docker
+
+A `Dockerfile` is provided for building a container image with the release binary.
+Build and run it with:
+
+```bash
+docker build -t encryptor .
+docker run --rm encryptor --help
+```
 
 ## Usage
 
@@ -70,6 +86,13 @@ cargo test --offline
 ```
 
 This will compile the project and execute the tests found in the `tests/` directory entirely offline once the dependencies have been fetched.
+
+## Continuous Deployment
+
+Merges to the `main` branch trigger a GitHub Actions workflow that
+formats the code, lints with Clippy, runs the test suite and builds a
+release binary. The resulting executable is published as a GitHub
+release using the crate version from `Cargo.toml`.
 
 ## Attack Vectors and Known Issues
 
