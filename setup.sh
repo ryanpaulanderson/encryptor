@@ -1,29 +1,27 @@
-#!/usr/bin/env bash
+# 1. Ensure we can fetch from crates.io
+export CARGO_NET_OFFLINE=false
 
-# Simple setup script for the encryptor project.
-# Installs system dependencies, Rust toolchain and pulls crate dependencies.
+rustup component add rustfmt
+rustup component add clippy
 
-set -euo pipefail
+# 2. Generate or update Cargo.lock (needed so vendor knows exactly what to pull) :contentReference[oaicite:0]{index=0}
+cargo generate-lockfile
 
-if [[ $EUID -ne 0 ]]; then
-    echo "This script must be run as root" >&2
-    exit 1
-fi
+# 3. Vendor ALL direct+transitive crates locally :contentReference[oaicite:1]{index=1}
+cargo vendor
 
-apt-get update
-apt-get install -y --no-install-recommends \
-    build-essential curl git pkg-config libssl-dev
+# 4. Now lock down to offline-only mode :contentReference[oaicite:2]{index=2}
+export CARGO_NET_OFFLINE=true
 
-if ! command -v rustc >/dev/null 2>&1; then
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-    source "$HOME/.cargo/env"
-fi
+# 5. Tell Cargo where to find vendored crates
+mkdir -p .cargo
+cat > .cargo/config.toml << 'EOF'
+[net]
+offline = true
 
-# Fetch Rust crate dependencies and generate Cargo.lock
-cargo fetch --locked
+[source.crates-io]
+replace-with = "vendored-sources"
 
-# Optionally build the project (uncomment to build)
-# cargo build --release
-
-echo "Setup complete."
-
+[source.vendored-sources]
+directory = "vendor"
+EOF
