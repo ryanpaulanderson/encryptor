@@ -184,3 +184,5 @@ cython_debug/
 *cargo.lock
 *cargo.LOCK
 *.Cargo.lock
+src/built_info.rs
+

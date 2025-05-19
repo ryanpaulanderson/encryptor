@@ -23,8 +23,15 @@ jobs:
             ~/.cargo/git
             vendor
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - name: Install security tools
+        run: |
+          cargo install --version ^0.17 cargo-audit
+          cargo install --version ^0.11 cargo-deny
+          cargo install --version ^0.2 cargo-auditable
       - name: Run checks
         run: |
           cargo fmt -- --check
           cargo clippy -- -D warnings
           cargo test --offline
+          cargo audit --deny warnings
+          cargo deny check

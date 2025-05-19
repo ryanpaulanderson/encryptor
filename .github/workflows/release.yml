@@ -21,14 +21,25 @@ jobs:
           toolchain: stable
           profile: minimal
           components: rustfmt, clippy
+      - name: Install security tools
+        run: |
+          cargo install --version ^0.17 cargo-audit
+          cargo install --version ^0.11 cargo-deny
+          cargo install --version ^0.2 cargo-auditable
       - name: Format
         run: cargo fmt -- --check
       - name: Lint
         run: cargo clippy -- -D warnings
       - name: Test
         run: cargo test --offline
+      - name: Dependency audit
+        run: cargo audit --deny warnings
       - name: Build
-        run: cargo build --release
+        run: cargo auditable build --release
+      - name: Policy check
+        run: cargo deny check
+      - name: Binary audit
+        run: cargo audit --json target/release/chacha20_poly1305
       - name: Determine next version
         id: version
         run: |

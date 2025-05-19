@@ -3,6 +3,7 @@ name = "encryptor"
 autobins = false
 version = "0.1.0"
 edition = "2024"
+build = "build.rs"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
