@@ -23,7 +23,7 @@ jobs:
       - name: Build documentation
         run: |
           cd ${{ github.workspace }}
-          cargo doc --no-deps --release
+          cargo doc --no-deps --release --extend-css docs/rustdoc.css
 
       - name: Deploy GitHub Pages
         uses: peaceiris/actions-gh-pages@v3

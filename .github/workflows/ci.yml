@@ -45,7 +45,8 @@ jobs:
           cargo clippy -- -D warnings
           RUST_TEST_THREADS=$(nproc) cargo test
           cargo audit --deny warnings
-          RUSTDOCFLAGS="--deny broken-intra-doc-links" cargo doc --no-deps --quiet
+          RUSTDOCFLAGS="--deny broken-intra-doc-links" \
+            cargo doc --no-deps --quiet --extend-css docs/rustdoc.css
 
   benchmark:
     name: 📊 Benchmark
