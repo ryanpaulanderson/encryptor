@@ -187,11 +187,16 @@ fn try_main() -> Result<()> {
             if n == 0 {
                 break;
             }
-            let chunk = &mut buf[..n];
-            encrypt_decrypt_in_place(chunk, &key, &nonce, &mut counter);
-            poly_update_stream(&mut poly, chunk, &mut leftover);
-            writer.write_all(chunk)?;
-            total_len += n;
+            let mut chunk = &mut buf[..n];
+            while !chunk.is_empty() {
+                let take = chunk.len().min(64);
+                let (block, rest) = chunk.split_at_mut(take);
+                encrypt_decrypt_in_place(block, &key, &nonce, &mut counter);
+                poly_update_stream(&mut poly, block, &mut leftover);
+                writer.write_all(block)?;
+                total_len += block.len();
+                chunk = rest;
+            }
         }
         poly.update_padded(&leftover);
         let mut len_block = [0u8; 16];
@@ -275,10 +280,15 @@ fn try_main() -> Result<()> {
                 break;
             }
             remaining -= read_len;
-            let chunk = &mut buf[..read_len];
-            poly_update_stream(&mut poly, chunk, &mut leftover);
-            encrypt_decrypt_in_place(chunk, &key, &nonce, &mut counter);
-            writer.write_all(chunk)?;
+            let mut chunk = &mut buf[..read_len];
+            while !chunk.is_empty() {
+                let take = chunk.len().min(64);
+                let (block, rest) = chunk.split_at_mut(take);
+                poly_update_stream(&mut poly, block, &mut leftover);
+                encrypt_decrypt_in_place(block, &key, &nonce, &mut counter);
+                writer.write_all(block)?;
+                chunk = rest;
+            }
         }
         let mut tag_bytes = [0u8; 16];
         reader.read_exact(&mut tag_bytes)?;
