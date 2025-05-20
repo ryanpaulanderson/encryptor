@@ -1,4 +1,5 @@
 use ed25519_dalek::SigningKey;
+use proptest::prelude::*;
 use rand::random;
 use std::fs;
 use std::process::Command;
@@ -122,4 +123,25 @@ fn verify_fails_when_missing_signature() {
         .status()
         .unwrap();
     assert!(!status.success());
+}
+
+proptest! {
+    #[test]
+    fn prop_sign_verify_roundtrip(data in proptest::collection::vec(any::<u8>(), 0..512)) {
+        let sk_bytes: [u8; 32] = rand::random();
+        let sk = SigningKey::from_bytes(&sk_bytes);
+        let pk = sk.verifying_key();
+        let sig = encryptor::sign(&data, &sk);
+        prop_assert!(encryptor::verify(&data, &sig, &pk));
+    }
+
+    #[test]
+    fn prop_verify_detects_modification(mut data in proptest::collection::vec(any::<u8>(), 1..512)) {
+        let sk_bytes: [u8; 32] = rand::random();
+        let sk = SigningKey::from_bytes(&sk_bytes);
+        let pk = sk.verifying_key();
+        let sig = encryptor::sign(&data, &sk);
+        data[0] ^= 1;
+        prop_assert!(!encryptor::verify(&data, &sig, &pk));
+    }
 }

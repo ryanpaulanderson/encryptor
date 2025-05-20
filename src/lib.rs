@@ -364,16 +364,49 @@ pub fn encrypt_decrypt_in_place(
 
 use ed25519_dalek::{Signer, SigningKey, VerifyingKey};
 
-/// Length in bytes of an Ed25519 signature.
+/// Length in bytes of an Ed25519 signature produced by [`sign`].
 pub const SIG_LEN: usize = ed25519_dalek::SIGNATURE_LENGTH;
 
-/// Sign `data` using `key`, returning the detached signature bytes.
+/// Sign `data` with `key` and return the detached signature bytes.
+///
+/// The returned byte array always has length [`SIG_LEN`].
+///
+/// # Examples
+///
+/// ```
+/// use ed25519_dalek::SigningKey;
+/// use encryptor::{sign, verify, SIG_LEN};
+/// use rand::random;
+///
+/// let key_bytes: [u8; 32] = random();
+/// let key = SigningKey::from_bytes(&key_bytes);
+/// let msg = b"hello";
+/// let sig = sign(msg, &key);
+/// assert_eq!(sig.len(), SIG_LEN);
+/// assert!(verify(msg, &sig, &key.verifying_key()));
+/// ```
 pub fn sign(data: &[u8], key: &SigningKey) -> [u8; SIG_LEN] {
     let sig = key.sign(data);
     sig.to_bytes()
 }
 
 /// Verify that `sig` is a valid Ed25519 signature on `data`.
+///
+/// Returns `true` if the signature is valid and `false` otherwise.
+///
+/// # Examples
+///
+/// ```
+/// use ed25519_dalek::SigningKey;
+/// use encryptor::{sign, verify};
+/// use rand::random;
+///
+/// let key_bytes: [u8; 32] = random();
+/// let key = SigningKey::from_bytes(&key_bytes);
+/// let msg = b"data";
+/// let sig = sign(msg, &key);
+/// assert!(verify(msg, &sig, &key.verifying_key()));
+/// ```
 pub fn verify(data: &[u8], sig: &[u8], key: &VerifyingKey) -> bool {
     if let Ok(sig) = ed25519_dalek::Signature::from_slice(sig) {
         key.verify_strict(data, &sig).is_ok()
