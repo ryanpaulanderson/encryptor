@@ -361,3 +361,23 @@ pub fn encrypt_decrypt_in_place(
     });
     *counter = base.wrapping_add(blocks as u32);
 }
+
+use ed25519_dalek::{Signer, SigningKey, VerifyingKey};
+
+/// Length in bytes of an Ed25519 signature.
+pub const SIG_LEN: usize = ed25519_dalek::SIGNATURE_LENGTH;
+
+/// Sign `data` using `key`, returning the detached signature bytes.
+pub fn sign(data: &[u8], key: &SigningKey) -> [u8; SIG_LEN] {
+    let sig = key.sign(data);
+    sig.to_bytes()
+}
+
+/// Verify that `sig` is a valid Ed25519 signature on `data`.
+pub fn verify(data: &[u8], sig: &[u8], key: &VerifyingKey) -> bool {
+    if let Ok(sig) = ed25519_dalek::Signature::from_slice(sig) {
+        key.verify_strict(data, &sig).is_ok()
+    } else {
+        false
+    }
+}
