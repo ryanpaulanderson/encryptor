@@ -19,6 +19,7 @@ secrecy = "0.8"
 [dev-dependencies]
 proptest = "1.0"
 tempfile = "3.5"
+autocfg = "1.4.0"
 
 [[bin]]
 name = "chacha20_poly1305"
