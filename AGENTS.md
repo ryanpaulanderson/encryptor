@@ -50,6 +50,7 @@ This file defines guidance for AI assistants (Codex) when interacting with the *
 * **Add New Feature**: Write tests first (unit, proptest), implement, then run tests.
 * **Refactor**: Ensure `cargo fmt`, `cargo clippy`, and `cargo test` pass.
 * **Documentation**: Update `README.md` and doc-comments; run `cargo doc --no-deps`.
+* **RFC-8439 Block Test**: Maintain the ChaCha20 block-function vector test in `tests/chacha20_vectors.rs`.
 
 ## Security Practices
 
