@@ -23,6 +23,22 @@ After installing the toolchain you can vendor the dependencies and compile the b
 ./build.sh
 ```
 
+## Getting started
+
+The library can also be used directly from Rust code. The full API
+documentation is available on [docs.rs](https://docs.rs/encryptor).
+
+```rust
+use encryptor::{Argon2Config, derive_key, encrypt_decrypt};
+
+let cfg = Argon2Config::default();
+let key = derive_key("secret", b"0123456789abcdef", &cfg).unwrap();
+let nonce = [0u8; 12];
+let cipher = encrypt_decrypt(b"hello", &key, &nonce);
+let plain = encrypt_decrypt(&cipher, &key, &nonce);
+assert_eq!(plain, b"hello");
+```
+
 ## Building
 
 ```bash
