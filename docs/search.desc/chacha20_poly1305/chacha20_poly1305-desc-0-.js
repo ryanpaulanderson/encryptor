@@ -1,0 +1,1 @@
+searchState.loadedDescShard("chacha20_poly1305", 0, "Command line interface for the <code>encryptor</code> crate.\nReturns the argument unchanged.\nReturns the argument unchanged.\nReturns the argument unchanged.\nCalls <code>U::from(self)</code>.\nCalls <code>U::from(self)</code>.\nCalls <code>U::from(self)</code>.")
