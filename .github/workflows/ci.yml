@@ -81,8 +81,8 @@ jobs:
       - name: Run PR benches
         run: |
           git checkout ${{ github.sha }}
-          # MODIFIED LINE: Add --bench encryptor_benchmarks
-          cargo bench --bench encryptor_benchmarks -- --baseline main --save-baseline pr
+          # Only save the baseline for the PR. The comparison is done by critcmp later.
+          cargo bench --bench encryptor_benchmarks -- --save-baseline pr
 
       - name: Compare benchmarks
         run: critcmp main pr > bench.diff
