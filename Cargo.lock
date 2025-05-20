@@ -349,7 +349,6 @@ dependencies = [
  "rand 0.9.1",
  "rayon",
  "secrecy",
- "serde_json",
  "sha2",
  "subtle",
  "tempfile",
