@@ -243,6 +243,7 @@ dependencies = [
  "rayon",
  "secrecy",
  "sha2",
+ "subtle",
  "tempfile",
  "zeroize",
 ]
