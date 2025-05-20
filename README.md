@@ -62,7 +62,8 @@ docker run --rm encryptor --help
 
 ```
 chacha20_poly1305 <encrypt|decrypt> <INPUT> <OUTPUT> <PASSWORD> \
-    [--verify-hash <HEX>] [--mem-size <MiB>] [--iterations <N>] [--parallelism <N>] [--verbose]
+    [--verify-hash <HEX>] [--mem-size <MiB>] [--iterations <N>] [--parallelism <N>] \
+    [--sign-key <FILE>] [--verify-key <FILE>] [--verbose]
 ```
 
 Arguments:
@@ -74,6 +75,8 @@ Arguments:
 - `--mem-size` – Argon2 memory usage in MiB (default: 64).
 - `--iterations` – Argon2 iterations/passes (default: 4).
 - `--parallelism` – Argon2 parallelism degree (default: 1).
+- `--sign-key` – path to an Ed25519 private key to sign the encrypted output.
+- `--verify-key` – path to an Ed25519 public key used to verify the signature.
 - `--verbose` – print detailed error messages for debugging.
 
 Example encrypt:
@@ -87,6 +90,25 @@ Example decrypt with integrity check:
 ```bash
 chacha20_poly1305 decrypt secret.bin plain.txt mypassword --verify-hash <hash>
 ```
+
+Example encrypt with a signature:
+
+```bash
+chacha20_poly1305 encrypt plain.txt secret.bin mypassword \
+    --sign-key priv.key
+```
+
+Example decrypt verifying the signature:
+
+```bash
+chacha20_poly1305 decrypt secret.bin plain.txt mypassword \
+    --verify-key pub.key
+```
+
+Private keys must be 32-byte raw Ed25519 seeds and the public key is the
+corresponding 32-byte verifying key. Keys can be generated using
+`openssl rand -out priv.key 32` and deriving the public key with a tool such as
+[`ed25519-dalek`](https://docs.rs/ed25519-dalek/).
 
 ### Error Handling
 
