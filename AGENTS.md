@@ -56,6 +56,7 @@ This file defines guidance for AI assistants (Codex) when interacting with the *
 * **Zeroization**: Wrap secrets in `secrecy::Secret` and use `Zeroize` on ephemeral buffers.
 * **AEAD**: Authenticate headers & ciphertext with Poly1305; verify before decryption.
 * **KDF Hardening**: Expose and bound Argon2 `mem_cost`, `time_cost`, `parallelism`.
+* **Streaming API**: Functions like `encrypt_decrypt_in_place` must accept `&Secret<[u8; 32]>` and unwrap the secret exactly once inside the function body.
 
 ## Workflow Automation
 
