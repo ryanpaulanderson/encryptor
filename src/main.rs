@@ -11,6 +11,7 @@
 use anyhow::{bail, Result};
 use clap::{Args, Parser, Subcommand};
 use rand::{rngs::OsRng, RngCore};
+use secrecy::ExposeSecret;
 use sha2::{Digest, Sha256};
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufReader, BufWriter, Read, Write};
@@ -20,8 +21,8 @@ use std::path::PathBuf;
 use zeroize::Zeroize;
 
 use encryptor::{
-    chacha20_block, ct_eq, derive_key, encrypt_decrypt_in_place, unlock, Argon2Config, HEADER_LEN,
-    MAGIC,
+    chacha20_block, ct_eq, derive_key, encrypt_decrypt_in_place, lock, unlock,
+    Argon2Config, HEADER_LEN, MAGIC,
 };
 use poly1305::{
     universal_hash::{KeyInit, UniversalHash},
@@ -55,9 +56,7 @@ fn sha256_file(path: &PathBuf) -> Result<String> {
     let mut buf = [0u8; 65536];
     loop {
         let n = file.read(&mut buf)?;
-        if n == 0 {
-            break;
-        }
+        if n == 0 { break; }
         hasher.update(&buf[..n]);
     }
     Ok(hex::encode(hasher.finalize()))
@@ -112,8 +111,7 @@ fn main() -> Result<()> {
         time_cost: args.iterations,
         parallelism: args.parallelism,
     };
-    let max_mem = 1024 * 1024;
-    if cfg.mem_cost_kib > max_mem {
+    if cfg.mem_cost_kib > 1024 * 1024 {
         bail!("--mem-size too large");
     }
     let cpus = std::thread::available_parallelism()
@@ -125,175 +123,137 @@ fn main() -> Result<()> {
 
     if !decrypting {
         let mut reader = BufReader::new(File::open(&args.input_file)?);
-        let mut out_opts = OpenOptions::new();
-        out_opts.write(true).create_new(true);
-        #[cfg(unix)]
-        out_opts.mode(0o600);
+        let mut out_opts = OpenOptions::new().write(true).create_new(true);
+        #[cfg(unix)] out_opts.mode(0o600);
         let out_file = out_opts.open(&args.output_file)?;
         let mut writer = BufWriter::new(out_file);
 
+        // build header
         let mut header = Vec::with_capacity(HEADER_LEN);
         header.extend_from_slice(MAGIC);
         header.push(1);
-        header.extend_from_slice(&[0; 3]);
-        let mut salt = [0u8; 16];
-        OsRng.fill_bytes(&mut salt);
-        let mut nonce = [0u8; 12];
-        OsRng.fill_bytes(&mut nonce);
+        header.extend_from_slice(&[0;3]);
+        let mut salt = [0u8;16]; OsRng.fill_bytes(&mut salt);
+        let mut nonce = [0u8;12]; OsRng.fill_bytes(&mut nonce);
         header.extend_from_slice(&salt);
         header.extend_from_slice(&nonce);
         writer.write_all(&header)?;
 
-        let mut key = derive_key(&args.password, &salt, &cfg)?;
-        let mut block0 = chacha20_block(&key, 0, &nonce);
-        let mut r_bytes = [0u8; 16];
-        r_bytes.copy_from_slice(&block0[..16]);
-        let mut s_bytes = [0u8; 16];
-        s_bytes.copy_from_slice(&block0[16..32]);
-        r_bytes[3] &= 15;
-        r_bytes[7] &= 15;
-        r_bytes[11] &= 15;
-        r_bytes[15] &= 15;
-        r_bytes[4] &= 252;
-        r_bytes[8] &= 252;
-        r_bytes[12] &= 252;
+        // derive key
+        let key_sec = derive_key(&args.password, &salt, &cfg)?;
+        let key = key_sec.expose_secret();
+
+        // poly1305 one-time key
+        let mut block0 = chacha20_block(key, 0, &nonce);
+        let mut r_bytes = [0u8;16]; r_bytes.copy_from_slice(&block0[..16]);
+        let mut s_bytes = [0u8;16]; s_bytes.copy_from_slice(&block0[16..32]);
+        r_bytes[3] &= 15; r_bytes[7] &= 15; r_bytes[11] &= 15; r_bytes[15] &= 15;
+        r_bytes[4] &= 252; r_bytes[8] &= 252; r_bytes[12] &= 252;
         let r = u128::from_le_bytes(r_bytes);
         let s = u128::from_le_bytes(s_bytes);
-        block0.zeroize();
-        r_bytes.zeroize();
-        s_bytes.zeroize();
+        block0.zeroize(); r_bytes.zeroize(); s_bytes.zeroize();
 
-        let mut key_bytes = [0u8; 32];
+        let mut key_bytes = [0u8;32];
         key_bytes[..16].copy_from_slice(&r.to_le_bytes());
         key_bytes[16..].copy_from_slice(&s.to_le_bytes());
+        lock(&key_bytes).ok();
         let mut poly = Poly1305::new(Key::from_slice(&key_bytes));
-        key_bytes.zeroize();
-        poly.update_padded(&header);
+        unlock(&key_bytes).ok();
 
-        let mut buf = [0u8; 65536];
+        poly.update_padded(&header);
+        let mut buf = [0u8;65536];
         let mut leftover = Vec::new();
         let mut counter = 1u32;
-        let mut total_len = 0usize;
+        let mut total = 0usize;
         loop {
             let n = reader.read(&mut buf)?;
-            if n == 0 {
-                break;
-            }
+            if n == 0 { break; }
             let chunk = &mut buf[..n];
-            encrypt_decrypt_in_place(chunk, &key, &nonce, &mut counter);
+            encrypt_decrypt_in_place(chunk, key, &nonce, &mut counter);
             poly_update_stream(&mut poly, chunk, &mut leftover);
             writer.write_all(chunk)?;
-            total_len += n;
+            total += n;
         }
         poly.update_padded(&leftover);
-        let mut len_block = [0u8; 16];
-        len_block[..8].copy_from_slice(&(header.len() as u64).to_le_bytes());
-        len_block[8..].copy_from_slice(&(total_len as u64).to_le_bytes());
-        poly.update(&[Block::clone_from_slice(&len_block)]);
-        let tag = poly.finalize();
-        writer.write_all(tag.as_slice())?;
+        let mut lenb = [0u8;16];
+        lenb[..8].copy_from_slice(&(header.len() as u64).to_le_bytes());
+        lenb[8..].copy_from_slice(&(total as u64).to_le_bytes());
+        poly.update(&[Block::clone_from_slice(&lenb)]);
+        let tag = poly.finalize(); writer.write_all(tag.as_slice())?;
         writer.flush()?;
 
-        key.zeroize();
-        unlock(&key).ok();
-        salt.zeroize();
-        nonce.zeroize();
-        header.zeroize();
+        // secret zeroized on drop
+        unlock(key).ok();
+        salt.zeroize(); nonce.zeroize(); header.zeroize();
     } else {
-        if let Some(expected_hex) = &args.verify_hash {
-            let actual_hex = sha256_file(&args.input_file)?;
-            if !ct_eq(actual_hex.as_bytes(), expected_hex.as_bytes()) {
+        if let Some(expected) = &args.verify_hash {
+            let got = sha256_file(&args.input_file)?;
+            if !ct_eq(got.as_bytes(), expected.as_bytes()) {
                 bail!("Hash mismatch");
             }
         }
-
-        let file_len = fs::metadata(&args.input_file)?.len() as usize;
-        if file_len < HEADER_LEN + 16 {
-            bail!("Input too short");
-        }
+        let len = fs::metadata(&args.input_file)?.len() as usize;
+        if len < HEADER_LEN + 16 { bail!("Input too short"); }
 
         let mut reader = BufReader::new(File::open(&args.input_file)?);
-        let mut header = [0u8; HEADER_LEN];
-        reader.read_exact(&mut header)?;
+        let mut header = [0u8; HEADER_LEN]; reader.read_exact(&mut header)?;
+        if !ct_eq(&header[..4], MAGIC) || header[4] != 1 { bail!("Invalid header"); }
+        let salt: [u8;16] = header[8..24].try_into().unwrap();
+        let nonce: [u8;12] = header[24..36].try_into().unwrap();
 
-        let magic_ok = ct_eq(&header[..4], MAGIC);
-        let version_ok = ct_eq(&[header[4]], &[1]);
-        if !magic_ok || !version_ok {
-            bail!("Invalid header");
-        }
-        let mut salt: [u8; 16] = header[8..24].try_into().unwrap();
-        let mut nonce: [u8; 12] = header[24..36].try_into().unwrap();
-
-        let mut key = derive_key(&args.password, &salt, &cfg)?;
-        let mut block0 = chacha20_block(&key, 0, &nonce);
-        let mut r_bytes = [0u8; 16];
-        r_bytes.copy_from_slice(&block0[..16]);
-        let mut s_bytes = [0u8; 16];
-        s_bytes.copy_from_slice(&block0[16..32]);
-        r_bytes[3] &= 15;
-        r_bytes[7] &= 15;
-        r_bytes[11] &= 15;
-        r_bytes[15] &= 15;
-        r_bytes[4] &= 252;
-        r_bytes[8] &= 252;
-        r_bytes[12] &= 252;
+        let key_sec = derive_key(&args.password, &salt, &cfg)?;
+        let key = key_sec.expose_secret();
+        let mut block0 = chacha20_block(key, 0, &nonce);
+        let mut r_bytes = [0u8;16]; r_bytes.copy_from_slice(&block0[..16]);
+        let mut s_bytes = [0u8;16]; s_bytes.copy_from_slice(&block0[16..32]);
+        r_bytes[3] &= 15; r_bytes[7] &= 15; r_bytes[11] &= 15; r_bytes[15] &= 15;
+        r_bytes[4] &= 252; r_bytes[8] &= 252; r_bytes[12] &= 252;
         let r = u128::from_le_bytes(r_bytes);
         let s = u128::from_le_bytes(s_bytes);
-        block0.zeroize();
-        r_bytes.zeroize();
-        s_bytes.zeroize();
+        block0.zeroize(); r_bytes.zeroize(); s_bytes.zeroize();
 
-        let mut key_bytes = [0u8; 32];
+        let mut key_bytes = [0u8;32];
         key_bytes[..16].copy_from_slice(&r.to_le_bytes());
         key_bytes[16..].copy_from_slice(&s.to_le_bytes());
+        lock(&key_bytes).ok();
         let mut poly = Poly1305::new(Key::from_slice(&key_bytes));
-        key_bytes.zeroize();
+        unlock(&key_bytes).ok();
         poly.update_padded(&header);
 
-        let cipher_len = file_len - HEADER_LEN - 16;
-        let mut out_opts = OpenOptions::new();
-        out_opts.write(true).create_new(true);
-        #[cfg(unix)]
-        out_opts.mode(0o600);
-        let out_file = out_opts.open(&args.output_file)?;
-        let mut writer = BufWriter::new(out_file);
+        let cipher_len = len - HEADER_LEN - 16;
+        let mut out_opts = OpenOptions::new().write(true).create_new(true);
+        #[cfg(unix)] out_opts.mode(0o600);
+        let mut writer = BufWriter::new(out_opts.open(&args.output_file)?);
 
-        let mut buf = [0u8; 65536];
+        let mut buf = [0u8;65536];
         let mut leftover = Vec::new();
         let mut counter = 1u32;
-        let mut remaining = cipher_len;
-        while remaining > 0 {
-            let len = remaining.min(buf.len());
-            let read_len = reader.read(&mut buf[..len])?;
-            if read_len == 0 {
-                break;
-            }
-            remaining -= read_len;
-            let chunk = &mut buf[..read_len];
+        let mut rem = cipher_len;
+        while rem > 0 {
+            let rlen = rem.min(buf.len());
+            let n = reader.read(&mut buf[..rlen])?;
+            if n == 0 { break; }
+            rem -= n;
+            let chunk = &mut buf[..n];
             poly_update_stream(&mut poly, chunk, &mut leftover);
-            encrypt_decrypt_in_place(chunk, &key, &nonce, &mut counter);
+            encrypt_decrypt_in_place(chunk, key, &nonce, &mut counter);
             writer.write_all(chunk)?;
         }
-        let mut tag_bytes = [0u8; 16];
-        reader.read_exact(&mut tag_bytes)?;
+        let mut tag_bytes = [0u8;16]; reader.read_exact(&mut tag_bytes)?;
         poly.update_padded(&leftover);
-        let mut len_block = [0u8; 16];
-        len_block[..8].copy_from_slice(&(header.len() as u64).to_le_bytes());
-        len_block[8..].copy_from_slice(&(cipher_len as u64).to_le_bytes());
-        poly.update(&[Block::clone_from_slice(&len_block)]);
-        let expected = poly.finalize();
+        let mut lenb = [0u8;16];
+        lenb[..8].copy_from_slice(&(HEADER_LEN as u64).to_le_bytes());
+        lenb[8..].copy_from_slice(&(cipher_len as u64).to_le_bytes());
+        poly.update(&[Block::clone_from_slice(&lenb)]);
+        let expected = poly.finalize().into_bytes();
         if !ct_eq(expected.as_slice(), &tag_bytes) {
-            writer.flush()?; // ensure drop
-            drop(writer);
+            writer.flush()?; drop(writer);
             let _ = fs::remove_file(&args.output_file);
             bail!("Authentication failure");
         }
         writer.flush()?;
 
-        key.zeroize();
-        unlock(&key).ok();
-        nonce.zeroize();
-        salt.zeroize();
+        unlock(key).ok(); salt.zeroize(); nonce.zeroize();
     }
     Ok(())
 }
