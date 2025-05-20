@@ -75,12 +75,14 @@ jobs:
         run: |
           git fetch origin main
           git checkout origin/main
-          cargo bench -- --save-baseline main
+          # MODIFIED LINE: Add --bench encryptor_benchmarks
+          cargo bench --bench encryptor_benchmarks -- --save-baseline main
 
       - name: Run PR benches
         run: |
           git checkout ${{ github.sha }}
-          cargo bench -- --baseline main --save-baseline pr
+          # MODIFIED LINE: Add --bench encryptor_benchmarks
+          cargo bench --bench encryptor_benchmarks -- --baseline main --save-baseline pr
 
       - name: Compare benchmarks
         run: critcmp main pr > bench.diff
