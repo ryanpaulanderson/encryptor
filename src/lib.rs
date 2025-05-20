@@ -2,6 +2,7 @@ use anyhow::{anyhow, Result};
 use argon2::{Algorithm, Argon2, Params, Version};
 #[cfg(unix)]
 use libc::{mlock, munlock};
+use secrecy::{ExposeSecret, Secret};
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
@@ -56,17 +57,17 @@ pub fn unlock(_buf: &[u8]) -> std::io::Result<()> {
     Ok(())
 }
 
-pub fn derive_key(password: &str, salt: &[u8], cfg: &Argon2Config) -> Result<[u8; 32]> {
+pub fn derive_key(password: &str, salt: &[u8], cfg: &Argon2Config) -> Result<Secret<[u8; 32]>> {
     let params = Params::new(cfg.mem_cost_kib, cfg.time_cost, cfg.parallelism, None)
         .map_err(|e| anyhow!(e))?;
     let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
-    let mut key = [0u8; 32];
-    lock(&key)?;
+    let mut key_bytes = [0u8; 32];
+    lock(&key_bytes)?;
     argon2
-        .hash_password_into(password.as_bytes(), salt, &mut key)
+        .hash_password_into(password.as_bytes(), salt, &mut key_bytes)
         .map_err(|e| anyhow!(e))?;
-    unlock(&key)?;
-    Ok(key)
+    unlock(&key_bytes)?;
+    Ok(Secret::new(key_bytes))
 }
 
 fn rotl(v: u32, c: u32) -> u32 {
@@ -84,7 +85,7 @@ fn quarter_round(state: &mut [u32; 16], a: usize, b: usize, c: usize, d: usize) 
     state[b] = rotl(state[b] ^ state[c], 7);
 }
 
-pub fn chacha20_block(key: &[u8; 32], counter: u32, nonce: &[u8; 12]) -> [u8; 64] {
+pub fn chacha20_block(key: &Secret<[u8; 32]>, counter: u32, nonce: &[u8; 12]) -> [u8; 64] {
     let constants: [u8; 16] = *b"expand 32-byte k";
     let mut state = [0u32; 16];
     let state_bytes = unsafe {
@@ -94,8 +95,9 @@ pub fn chacha20_block(key: &[u8; 32], counter: u32, nonce: &[u8; 12]) -> [u8; 64
     for i in 0..4 {
         state[i] = u32::from_le_bytes(constants[4 * i..4 * i + 4].try_into().unwrap());
     }
+    let key_bytes = key.expose_secret();
     for i in 0..8 {
-        state[4 + i] = u32::from_le_bytes(key[4 * i..4 * i + 4].try_into().unwrap());
+        state[4 + i] = u32::from_le_bytes(key_bytes[4 * i..4 * i + 4].try_into().unwrap());
     }
     state[12] = counter;
     for i in 0..3 {
@@ -187,7 +189,7 @@ pub fn read_file_ct(path: &Path) -> Result<Vec<u8>> {
     Ok(buf)
 }
 
-pub fn encrypt_decrypt(data: &[u8], key: &[u8; 32], nonce: &[u8; 12]) -> Vec<u8> {
+pub fn encrypt_decrypt(data: &[u8], key: &Secret<[u8; 32]>, nonce: &[u8; 12]) -> Vec<u8> {
     let mut out = Vec::with_capacity(data.len());
     let mut counter = 1u32;
     for chunk in data.chunks(64) {
@@ -201,7 +203,7 @@ pub fn encrypt_decrypt(data: &[u8], key: &[u8; 32], nonce: &[u8; 12]) -> Vec<u8>
 
 pub fn encrypt_decrypt_in_place(
     data: &mut [u8],
-    key: &[u8; 32],
+    key: &Secret<[u8; 32]>,
     nonce: &[u8; 12],
     counter: &mut u32,
 ) {
