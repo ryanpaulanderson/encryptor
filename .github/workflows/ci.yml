@@ -45,3 +45,58 @@ jobs:
           cargo clippy -- -D warnings
           RUST_TEST_THREADS=$(nproc) cargo test
           cargo audit --deny warnings
+
+  benchmark:
+    name: 📊 Benchmark
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Rust (stable)
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          components: rustfmt, clippy
+
+      - name: Cache critcmp
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/critcmp
+          key: ${{ runner.os }}-cargo-critcmp-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install critcmp
+        if: steps.cache-critcmp.outputs.cache-hit != 'true'
+        run: cargo install critcmp
+
+      - name: Run baseline benches on `main`
+        run: |
+          git fetch origin main
+          git checkout origin/main
+          # MODIFIED LINE: Add --bench encryptor_benchmarks
+          cargo bench --bench encryptor_benchmarks -- --save-baseline main
+
+      - name: Run PR benches
+        run: |
+          git checkout ${{ github.sha }}
+          # MODIFIED LINE: Add --bench encryptor_benchmarks
+          cargo bench --bench encryptor_benchmarks -- --baseline main --save-baseline pr
+
+      - name: Compare benchmarks
+        run: critcmp main pr > bench.diff
+
+      - name: Post benchmark report
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const diff = require('fs').readFileSync('bench.diff', 'utf8');
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `## 📊 Benchmark delta\n\`\`\`\n${diff}\n\`\`\``
+            });
+

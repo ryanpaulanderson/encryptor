@@ -3,10 +3,11 @@ name = "encryptor"
 autobins = false
 version = "0.1.0"
 edition = "2021"
+# autobenches = false # You can keep this if you prefer explicit targets
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
-rand = "0.9"
+rand = "0.9" # Consider using a version like "0.8" if "0.9" is a typo or too new
 argon2 = "0.5"
 zeroize = "1.5"
 sha2 = "0.10"
@@ -21,7 +22,14 @@ subtle = "2.4"
 proptest = "1.0"
 tempfile = "3.5"
 autocfg = "1.4.0"
+criterion = "0.5" # Changed from "0.6" as 0.5.1 is the latest stable.
+                  # If you specifically need a "0.6" from a fork, adjust as needed.
 
 [[bin]]
 name = "chacha20_poly1305"
 path = "src/main.rs"
+
+[[bench]]
+name = "encryptor_benchmarks"   # This is an arbitrary name for your benchmark suite
+path = "benches/encryptor_benches.rs" # Path to your benchmark file
+harness = false  
