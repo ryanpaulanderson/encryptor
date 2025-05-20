@@ -70,6 +70,12 @@ Example decrypt with integrity check:
 chacha20_poly1305 decrypt secret.bin plain.txt mypassword --verify-hash <hash>
 ```
 
+### Error Handling
+
+The program exits with a non-zero status on failure. Errors are sanitized and
+classified as I/O issues, Argon2 failures, format problems or authentication
+errors to aid troubleshooting without leaking sensitive details.
+
 ## Security Notes
 
 This tool reads input files using a constant-time routine and performs all tag
