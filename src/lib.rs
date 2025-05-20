@@ -364,6 +364,11 @@ pub fn encrypt_decrypt_in_place(
 
 use ed25519_dalek::{Signer, SigningKey, VerifyingKey};
 
+/// Ed25519 private key type.
+pub type Ed25519PrivKey = SigningKey;
+/// Ed25519 public key type.
+pub type Ed25519PubKey = VerifyingKey;
+
 /// Length in bytes of an Ed25519 signature produced by [`sign`].
 pub const SIG_LEN: usize = ed25519_dalek::SIGNATURE_LENGTH;
 
@@ -374,8 +379,8 @@ pub const SIG_LEN: usize = ed25519_dalek::SIGNATURE_LENGTH;
 /// # Examples
 ///
 /// ```
+/// use encryptor::{sign, verify, SIG_LEN, Ed25519PrivKey};
 /// use ed25519_dalek::SigningKey;
-/// use encryptor::{sign, verify, SIG_LEN};
 /// use rand::random;
 ///
 /// let key_bytes: [u8; 32] = random();
@@ -385,8 +390,8 @@ pub const SIG_LEN: usize = ed25519_dalek::SIGNATURE_LENGTH;
 /// assert_eq!(sig.len(), SIG_LEN);
 /// assert!(verify(msg, &sig, &key.verifying_key()));
 /// ```
-pub fn sign(data: &[u8], key: &SigningKey) -> [u8; SIG_LEN] {
-    let sig = key.sign(data);
+pub fn sign(data: &[u8], priv_key: &Ed25519PrivKey) -> [u8; SIG_LEN] {
+    let sig = priv_key.sign(data);
     sig.to_bytes()
 }
 
@@ -407,9 +412,9 @@ pub fn sign(data: &[u8], key: &SigningKey) -> [u8; SIG_LEN] {
 /// let sig = sign(msg, &key);
 /// assert!(verify(msg, &sig, &key.verifying_key()));
 /// ```
-pub fn verify(data: &[u8], sig: &[u8], key: &VerifyingKey) -> bool {
+pub fn verify(data: &[u8], sig: &[u8], pub_key: &Ed25519PubKey) -> bool {
     if let Ok(sig) = ed25519_dalek::Signature::from_slice(sig) {
-        key.verify_strict(data, &sig).is_ok()
+        pub_key.verify_strict(data, &sig).is_ok()
     } else {
         false
     }

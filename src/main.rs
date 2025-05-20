@@ -6,7 +6,7 @@
 
 use clap::{Args, Parser, Subcommand};
 use encryptor::error::{set_verbose, Error, Result};
-use rand::{rngs::OsRng, TryRngCore};
+use rand_core::{OsRng, RngCore};
 use sha2::{Digest, Sha256};
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufReader, BufWriter, Read, Write};
@@ -60,6 +60,21 @@ fn sha256_file(path: &PathBuf) -> Result<String> {
     Ok(hex::encode(hasher.finalize()))
 }
 
+fn generate_keys(dir: &PathBuf) -> Result<()> {
+    fs::create_dir_all(dir)?;
+    let sk = SigningKey::generate(&mut OsRng);
+    let pk = sk.verifying_key();
+    let priv_path = dir.join("priv.key");
+    let pub_path = dir.join("pub.key");
+    let mut sk_bytes = sk.to_bytes();
+    let mut pk_bytes = pk.to_bytes();
+    fs::write(&priv_path, &sk_bytes[..])?;
+    fs::write(&pub_path, &pk_bytes[..])?;
+    sk_bytes.zeroize();
+    pk_bytes.zeroize();
+    Ok(())
+}
+
 #[derive(Parser)]
 #[command(
     name = "chacha20_poly1305",
@@ -68,8 +83,14 @@ fn sha256_file(path: &PathBuf) -> Result<String> {
 struct Cli {
     #[arg(long, help = "Enable verbose error messages", global = true)]
     verbose: bool,
+    #[arg(
+        long,
+        value_name = "DIR",
+        help = "Generate a new Ed25519 key pair and exit"
+    )]
+    generate_keys: Option<PathBuf>,
     #[command(subcommand)]
-    command: Command,
+    command: Option<Command>,
 }
 
 #[derive(Subcommand)]
@@ -121,7 +142,17 @@ fn main() {
 fn try_main() -> Result<()> {
     let cli = Cli::parse();
     set_verbose(cli.verbose);
-    let (decrypting, args) = match cli.command {
+    if let Some(dir) = &cli.generate_keys {
+        if cli.command.is_some() {
+            return Err(Error::FormatError(
+                "--generate-keys cannot be combined with other commands",
+            ));
+        }
+        generate_keys(dir)?;
+        return Ok(());
+    }
+    let command = cli.command.ok_or(Error::FormatError("Missing command"))?;
+    let (decrypting, args) = match command {
         Command::Encrypt(a) => (false, a),
         Command::Decrypt(a) => (true, a),
     };

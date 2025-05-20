@@ -86,6 +86,7 @@ docker run --rm encryptor --help
 chacha20_poly1305 <encrypt|decrypt> <INPUT> <OUTPUT> <PASSWORD> \
     [--verify-hash <HEX>] [--mem-size <MiB>] [--iterations <N>] [--parallelism <N>] \
     [--sign-key <FILE>] [--verify-key <FILE>] [--verbose]
+chacha20_poly1305 --generate-keys <DIR>
 ```
 
 Arguments:
@@ -100,6 +101,7 @@ Arguments:
 - `--sign-key` – path to an Ed25519 private key to sign the encrypted output.
 - `--verify-key` – path to an Ed25519 public key used to verify the signature.
 - `--verbose` – print detailed error messages for debugging.
+- `--generate-keys` – generate a new Ed25519 key pair in the given directory and exit.
 
 Example encrypt:
 
@@ -127,12 +129,24 @@ chacha20_poly1305 decrypt secret.bin plain.txt mypassword \
     --verify-key pub.key
 ```
 
+Example key generation:
+
+```bash
+chacha20_poly1305 --generate-keys mykeys
+```
+
 Private keys must be 32-byte raw Ed25519 seeds and the public key is the
 corresponding 32-byte verifying key. When a seed is loaded, the program expands
 it into the full 64 byte keypair internally so both halves are available for
 signing and verification. Keys can be generated using
 `openssl rand -out priv.key 32` and deriving the public key with a tool such as
-[`ed25519-dalek`](https://docs.rs/ed25519-dalek/).
+[`ed25519-dalek`](https://docs.rs/ed25519-dalek/). Alternatively, run
+
+```bash
+chacha20_poly1305 --generate-keys ./keys
+```
+
+to create `priv.key` and `pub.key` in the specified directory.
 
 ## File Format
 
