@@ -106,7 +106,9 @@ chacha20_poly1305 decrypt secret.bin plain.txt mypassword \
 ```
 
 Private keys must be 32-byte raw Ed25519 seeds and the public key is the
-corresponding 32-byte verifying key. Keys can be generated using
+corresponding 32-byte verifying key. When a seed is loaded, the program expands
+it into the full 64 byte keypair internally so both halves are available for
+signing and verification. Keys can be generated using
 `openssl rand -out priv.key 32` and deriving the public key with a tool such as
 [`ed25519-dalek`](https://docs.rs/ed25519-dalek/).
 
