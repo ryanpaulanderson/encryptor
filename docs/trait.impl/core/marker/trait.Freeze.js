@@ -1,9 +1,0 @@
-(function() {
-    var implementors = Object.fromEntries([["chacha20_poly1305",[["impl <a class=\"trait\" href=\"https://doc.rust-lang.org/1.87.0/core/marker/trait.Freeze.html\" title=\"trait core::marker::Freeze\">Freeze</a> for <a class=\"enum\" href=\"chacha20_poly1305/enum.Command.html\" title=\"enum chacha20_poly1305::Command\">Command</a>",1,["chacha20_poly1305::Command"]],["impl <a class=\"trait\" href=\"https://doc.rust-lang.org/1.87.0/core/marker/trait.Freeze.html\" title=\"trait core::marker::Freeze\">Freeze</a> for <a class=\"struct\" href=\"chacha20_poly1305/struct.Cli.html\" title=\"struct chacha20_poly1305::Cli\">Cli</a>",1,["chacha20_poly1305::Cli"]],["impl <a class=\"trait\" href=\"https://doc.rust-lang.org/1.87.0/core/marker/trait.Freeze.html\" title=\"trait core::marker::Freeze\">Freeze</a> for <a class=\"struct\" href=\"chacha20_poly1305/struct.ModeArgs.html\" title=\"struct chacha20_poly1305::ModeArgs\">ModeArgs</a>",1,["chacha20_poly1305::ModeArgs"]]]],["encryptor",[["impl <a class=\"trait\" href=\"https://doc.rust-lang.org/1.87.0/core/marker/trait.Freeze.html\" title=\"trait core::marker::Freeze\">Freeze</a> for <a class=\"enum\" href=\"encryptor/error/enum.Error.html\" title=\"enum encryptor::error::Error\">Error</a>",1,["encryptor::error::Error"]],["impl <a class=\"trait\" href=\"https://doc.rust-lang.org/1.87.0/core/marker/trait.Freeze.html\" title=\"trait core::marker::Freeze\">Freeze</a> for <a class=\"struct\" href=\"encryptor/struct.Argon2Config.html\" title=\"struct encryptor::Argon2Config\">Argon2Config</a>",1,["encryptor::Argon2Config"]]]]]);
-    if (window.register_implementors) {
-        window.register_implementors(implementors);
-    } else {
-        window.pending_implementors = implementors;
-    }
-})()
-//{"start":57,"fragment_lengths":[929,610]}

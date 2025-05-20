@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"constant":["HEADER_LEN","MAGIC"],"fn":["chacha20_block","ct_eq","derive_key","encrypt_decrypt","encrypt_decrypt_in_place","lock","read_file_ct","unlock"],"mod":["error"],"struct":["Argon2Config"]};
