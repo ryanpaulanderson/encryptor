@@ -86,13 +86,12 @@ fn quarter_round(state: &mut [u32; 16], a: usize, b: usize, c: usize, d: usize) 
     state[b] = rotl(state[b] ^ state[c], 7);
 }
 
-pub fn chacha20_block(key: &Secret<[u8; 32]>, counter: u32, nonce: &[u8; 12]) -> [u8; 64] {
+fn chacha20_block_bytes(key_bytes: &[u8; 32], counter: u32, nonce: &[u8; 12]) -> [u8; 64] {
     let constants: [u8; 16] = *b"expand 32-byte k";
     let mut state = [0u32; 16];
     for i in 0..4 {
         state[i] = u32::from_le_bytes(constants[4 * i..4 * i + 4].try_into().unwrap());
     }
-    let key_bytes = key.expose_secret();
     for i in 0..8 {
         state[4 + i] = u32::from_le_bytes(key_bytes[4 * i..4 * i + 4].try_into().unwrap());
     }
@@ -120,6 +119,10 @@ pub fn chacha20_block(key: &Secret<[u8; 32]>, counter: u32, nonce: &[u8; 12]) ->
     }
     working.zeroize();
     block
+}
+
+pub fn chacha20_block(key: &Secret<[u8; 32]>, counter: u32, nonce: &[u8; 12]) -> [u8; 64] {
+    chacha20_block_bytes(key.expose_secret(), counter, nonce)
 }
 
 pub fn poly1305_tag(r: &u128, s: &u128, aad: &[u8], ciphertext: &[u8]) -> [u8; 16] {
@@ -178,10 +181,11 @@ pub fn read_file_ct(path: &Path) -> Result<Vec<u8>> {
 }
 
 pub fn encrypt_decrypt(data: &[u8], key: &Secret<[u8; 32]>, nonce: &[u8; 12]) -> Vec<u8> {
+    let key_bytes = key.expose_secret();
     let mut out = Vec::with_capacity(data.len());
     let mut counter = 1u32;
     for chunk in data.chunks(64) {
-        let mut ks = chacha20_block(key, counter, nonce);
+        let mut ks = chacha20_block_bytes(key_bytes, counter, nonce);
         counter = counter.wrapping_add(1);
         out.extend(chunk.iter().enumerate().map(|(i, &b)| b ^ ks[i]));
         ks.zeroize();
@@ -195,8 +199,9 @@ pub fn encrypt_decrypt_in_place(
     nonce: &[u8; 12],
     counter: &mut u32,
 ) {
+    let key_bytes = key.expose_secret();
     for chunk in data.chunks_mut(64) {
-        let mut ks = chacha20_block(key, *counter, nonce);
+        let mut ks = chacha20_block_bytes(key_bytes, *counter, nonce);
         *counter = counter.wrapping_add(1);
         for (i, b) in chunk.iter_mut().enumerate() {
             *b ^= ks[i];
