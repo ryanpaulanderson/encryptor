@@ -21,7 +21,7 @@ subtle = "2.4"
 proptest = "1.0"
 tempfile = "3.5"
 autocfg = "1.4.0"
-criterion = "0.3"
+criterion = "0.6"
 
 [[bin]]
 name = "chacha20_poly1305"
