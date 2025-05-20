@@ -51,7 +51,7 @@ jobs:
         run: cargo clippy -- -D warnings
 
       - name: Test
-        run: cargo test
+        run: RUST_TEST_THREADS=$(nproc) cargo test
 
       - name: Security audit
         run: cargo audit --deny warnings
