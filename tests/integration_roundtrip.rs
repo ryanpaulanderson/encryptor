@@ -1,3 +1,4 @@
+use proptest::prelude::*;
 use rand::random;
 use std::fs;
 use std::process::Command;
@@ -6,9 +7,9 @@ const BIN: &str = env!("CARGO_BIN_EXE_chacha20_poly1305");
 
 fn run_roundtrip(input: &str, password: &str) {
     let mut enc = std::env::temp_dir();
-    enc.push(format!("enc-{}-{}.bin", password, random::<u32>()));
+    enc.push(format!("enc-{}.bin", random::<u32>()));
     let mut dec = std::env::temp_dir();
-    dec.push(format!("dec-{}-{}.txt", password, random::<u32>()));
+    dec.push(format!("dec-{}.txt", random::<u32>()));
 
     let status = Command::new(BIN)
         .args(["encrypt", input, enc.to_str().unwrap(), password])
@@ -43,4 +44,12 @@ fn roundtrip_sample_file() {
 #[test]
 fn roundtrip_empty_file() {
     run_roundtrip("tests/data/empty.txt", "pass123");
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(32))]
+    #[test]
+    fn roundtrip_random_password(pass in "[a-zA-Z0-9]{0,2048}") {
+        run_roundtrip("tests/data/sample.txt", &pass);
+    }
 }

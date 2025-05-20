@@ -1,3 +1,4 @@
+use proptest::prelude::*;
 use rand::random;
 use sha2::{Digest, Sha256};
 use std::fs;
@@ -114,4 +115,42 @@ fn tampered_header_detected() {
 
     let _ = fs::remove_file(enc);
     let _ = fs::remove_file(dec);
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(20))]
+    #[test]
+    fn malformed_header_cases(case in 0u8..5) {
+        let input = "tests/data/sample.txt";
+        let pass = "propbad";
+        let enc = encrypt_file(input, pass);
+        let mut data = fs::read(&enc).unwrap();
+
+        match case {
+            0 => { // wrong magic
+                data[..4].copy_from_slice(b"BAD!");
+            }
+            1 => { // wrong version
+                data[4] = data[4].wrapping_add(1);
+            }
+            2 => { // truncated salt byte
+                data.remove(8);
+            }
+            3 => { // truncated nonce byte
+                data.remove(24);
+            }
+            _ => { // extra byte after header
+                data.insert(36, 0); // insert zero before ciphertext
+            }
+        }
+
+        fs::write(&enc, &data).unwrap();
+        let mut dec = std::env::temp_dir();
+        dec.push("dec-malform.txt");
+        let status = decrypt_file(&enc, &dec, pass, None);
+        assert!(!status.success());
+
+        let _ = fs::remove_file(enc);
+        let _ = fs::remove_file(dec);
+    }
 }
