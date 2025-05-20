@@ -46,54 +46,54 @@ jobs:
           RUST_TEST_THREADS=$(nproc) cargo test
           cargo audit --deny warnings
 
-          benchmark:
-            if: github.event_name == 'pull_request'
-            runs-on: ubuntu-latest
-            steps:
-              - name: Checkout code
-                uses: actions/checkout@v4
-        
-              - name: Set up Rust
-                uses: actions-rs/toolchain@v1
-                with:
-                  toolchain: stable
-                  override: true
-                  components: rustfmt, clippy
-        
-              # Cache the criterion CLI so you don’t reinstall every run
-              - name: Cache cargo-criterion
-                id: cache-criterion
-                uses: actions/cache@v4
-                with:
-                  path: ~/.cargo/bin/cargo-criterion
-                  key: ${{ runner.os }}-criterion-${{ hashFiles('**/Cargo.lock') }}
-        
-              - name: Install Criterion CLI
-                if: steps.cache-criterion.outputs.cache-hit != 'true'
-                run: cargo install --locked --version ^0.4 cargo-criterion
-        
-              - name: Run benches on PR head
-                run: cargo criterion -- --save-baseline pr.json
-        
-              - name: Run benches on main
-                run: |
-                  git fetch origin main
-                  git checkout origin/main
-                  cargo criterion -- --save-comparison main.json
-        
-              - name: Compare benchmarks
-                run: critcmp main.json pr.json > bench.diff
-        
-              - name: Post benchmark report
-                uses: actions/github-script@v6
-                with:
-                  github-token: ${{ secrets.GITHUB_TOKEN }}
-                  script: |
-                    const diff = require('fs').readFileSync('bench.diff', 'utf8');
-                    github.rest.issues.createComment({
-                      owner: context.repo.owner,
-                      repo: context.repo.repo,
-                      issue_number: context.issue.number,
-                      body: `## 📊 Benchmark delta\n\`\`\`\n${diff}\n\`\`\``
-                    });
+  benchmark:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          components: rustfmt, clippy
+
+      # Cache the criterion CLI so you don’t reinstall every run
+      - name: Cache cargo-criterion
+        id: cache-criterion
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/cargo-criterion
+          key: ${{ runner.os }}-criterion-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install Criterion CLI
+        if: steps.cache-criterion.outputs.cache-hit != 'true'
+        run: cargo install --locked --version ^0.4 cargo-criterion
+
+      - name: Run benches on PR head
+        run: cargo criterion -- --save-baseline pr.json
+
+      - name: Run benches on main
+        run: |
+          git fetch origin main
+          git checkout origin/main
+          cargo criterion -- --save-comparison main.json
+
+      - name: Compare benchmarks
+        run: critcmp main.json pr.json > bench.diff
+
+      - name: Post benchmark report
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const diff = require('fs').readFileSync('bench.diff', 'utf8');
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `## 📊 Benchmark delta\n\`\`\`\n${diff}\n\`\`\``
+            });
 
