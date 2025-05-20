@@ -15,8 +15,10 @@ use std::os::unix::fs::OpenOptionsExt;
 use std::path::PathBuf;
 use zeroize::Zeroize;
 
+use ed25519_dalek::{SigningKey, VerifyingKey};
 use encryptor::{
-    chacha20_block, ct_eq, derive_key, encrypt_decrypt_in_place, Argon2Config, HEADER_LEN, MAGIC,
+    chacha20_block, ct_eq, derive_key, encrypt_decrypt_in_place, sign, verify, Argon2Config,
+    HEADER_LEN, MAGIC, SIG_LEN,
 };
 use poly1305::{
     universal_hash::{KeyInit, UniversalHash},
@@ -95,6 +97,18 @@ struct ModeArgs {
     iterations: u32,
     #[arg(long, default_value_t = 1, help = "Argon2 parallelism")]
     parallelism: u32,
+    #[arg(
+        long,
+        value_name = "PRIVATE_KEY_PATH",
+        help = "Ed25519 private key to sign output"
+    )]
+    sign_key: Option<PathBuf>,
+    #[arg(
+        long,
+        value_name = "PUBLIC_KEY_PATH",
+        help = "Ed25519 public key to verify input"
+    )]
+    verify_key: Option<PathBuf>,
 }
 
 fn main() {
@@ -110,6 +124,38 @@ fn try_main() -> Result<()> {
     let (decrypting, args) = match cli.command {
         Command::Encrypt(a) => (false, a),
         Command::Decrypt(a) => (true, a),
+    };
+
+    let sign_key = if !decrypting {
+        if let Some(p) = &args.sign_key {
+            let bytes = fs::read(p)?;
+            if bytes.len() != 32 {
+                return Err(Error::FormatError("Invalid key length"));
+            }
+            let mut sk = [0u8; 32];
+            sk.copy_from_slice(&bytes);
+            Some(SigningKey::from_bytes(&sk))
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    let verify_key = if decrypting {
+        if let Some(p) = &args.verify_key {
+            let bytes = fs::read(p)?;
+            if bytes.len() != 32 {
+                return Err(Error::FormatError("Invalid key length"));
+            }
+            let mut pk = [0u8; 32];
+            pk.copy_from_slice(&bytes);
+            Some(VerifyingKey::from_bytes(&pk).map_err(|_| Error::FormatError("Invalid key"))?)
+        } else {
+            None
+        }
+    } else {
+        None
     };
 
     let cfg = Argon2Config {
@@ -187,6 +233,11 @@ fn try_main() -> Result<()> {
         let mut poly = Poly1305::new(Key::from_slice(&key_bytes));
         key_bytes.zeroize();
         poly.update_padded(&header);
+        let mut sign_buf = if sign_key.is_some() {
+            header.clone()
+        } else {
+            Vec::new()
+        };
 
         let mut buf = [0u8; 65536];
         let mut leftover = Vec::new();
@@ -204,6 +255,9 @@ fn try_main() -> Result<()> {
                 encrypt_decrypt_in_place(block, &key, &nonce, &mut counter);
                 poly_update_stream(&mut poly, block, &mut leftover);
                 writer.write_all(block)?;
+                if sign_key.is_some() {
+                    sign_buf.extend_from_slice(block);
+                }
                 total_len += block.len();
                 chunk = rest;
             }
@@ -215,6 +269,13 @@ fn try_main() -> Result<()> {
         poly.update(&[Block::clone_from_slice(&len_block)]);
         let tag = poly.finalize();
         writer.write_all(tag.as_slice())?;
+        if sign_key.is_some() {
+            sign_buf.extend_from_slice(tag.as_slice());
+        }
+        if let Some(key) = &sign_key {
+            let sig = sign(&sign_buf, key);
+            writer.write_all(&sig)?;
+        }
         writer.flush()?;
 
         salt.zeroize();
@@ -229,7 +290,8 @@ fn try_main() -> Result<()> {
         }
 
         let file_len = fs::metadata(&args.input_file)?.len() as usize;
-        if file_len < HEADER_LEN + 16 {
+        let sig_len = if verify_key.is_some() { SIG_LEN } else { 0 };
+        if file_len < HEADER_LEN + 16 + sig_len {
             return Err(Error::FormatError("Input too short"));
         }
 
@@ -271,7 +333,23 @@ fn try_main() -> Result<()> {
         key_bytes.zeroize();
         poly.update_padded(&header);
 
-        let cipher_len = file_len - HEADER_LEN - 16;
+        let cipher_len = file_len - HEADER_LEN - 16 - sig_len;
+        let mut cipher = vec![0u8; cipher_len];
+        reader.read_exact(&mut cipher)?;
+        let mut tag_bytes = [0u8; 16];
+        reader.read_exact(&mut tag_bytes)?;
+        if let Some(key) = &verify_key {
+            let mut sig_bytes = [0u8; SIG_LEN];
+            reader.read_exact(&mut sig_bytes)?;
+            let mut verify_buf = Vec::with_capacity(header.len() + cipher_len + 16);
+            verify_buf.extend_from_slice(&header);
+            verify_buf.extend_from_slice(&cipher);
+            verify_buf.extend_from_slice(&tag_bytes);
+            if !verify(&verify_buf, &sig_bytes, key) {
+                return Err(Error::FormatError("Signature mismatch"));
+            }
+        }
+
         let mut out_opts = OpenOptions::new();
         out_opts.write(true).create_new(true);
         #[cfg(unix)]
@@ -279,29 +357,17 @@ fn try_main() -> Result<()> {
         let out_file = out_opts.open(&args.output_file)?;
         let mut writer = BufWriter::new(out_file);
 
-        let mut buf = [0u8; 65536];
+        let mut buf = &mut cipher[..];
         let mut leftover = Vec::new();
         let mut counter = 1u32;
-        let mut remaining = cipher_len;
-        while remaining > 0 {
-            let len = remaining.min(buf.len());
-            let read_len = reader.read(&mut buf[..len])?;
-            if read_len == 0 {
-                break;
-            }
-            remaining -= read_len;
-            let mut chunk = &mut buf[..read_len];
-            while !chunk.is_empty() {
-                let take = chunk.len().min(64);
-                let (block, rest) = chunk.split_at_mut(take);
-                poly_update_stream(&mut poly, block, &mut leftover);
-                encrypt_decrypt_in_place(block, &key, &nonce, &mut counter);
-                writer.write_all(block)?;
-                chunk = rest;
-            }
+        while !buf.is_empty() {
+            let take = buf.len().min(64);
+            let (block, rest) = buf.split_at_mut(take);
+            poly_update_stream(&mut poly, block, &mut leftover);
+            encrypt_decrypt_in_place(block, &key, &nonce, &mut counter);
+            writer.write_all(block)?;
+            buf = rest;
         }
-        let mut tag_bytes = [0u8; 16];
-        reader.read_exact(&mut tag_bytes)?;
         poly.update_padded(&leftover);
         let mut len_block = [0u8; 16];
         len_block[..8].copy_from_slice(&(header.len() as u64).to_le_bytes());
