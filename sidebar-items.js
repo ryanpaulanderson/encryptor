@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"constant":["HEADER_LEN","MAGIC","SIG_LEN"],"fn":["chacha20_block","ct_eq","derive_key","encrypt_decrypt","encrypt_decrypt_in_place","lock","read_file_ct","sign","unlock","verify"],"mod":["error"],"struct":["Argon2Config"]};
+window.SIDEBAR_ITEMS = {"constant":["HEADER_LEN","MAGIC","SIG_LEN"],"fn":["chacha20_block","ct_eq","derive_key","encrypt_decrypt","encrypt_decrypt_in_place","lock","read_file_ct","sign","unlock","verify"],"mod":["error"],"struct":["Argon2Config"],"type":["Ed25519PrivKey","Ed25519PubKey"]};
