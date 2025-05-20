@@ -154,13 +154,10 @@ pub fn poly1305_tag(r: &u128, s: &u128, aad: &[u8], ciphertext: &[u8]) -> [u8; 1
     out
 }
 
+use subtle::ConstantTimeEq;
+
 pub fn ct_eq(a: &[u8], b: &[u8]) -> bool {
-    a.len() == b.len()
-        && a.iter()
-            .zip(b)
-            .map(|(&x, &y)| x ^ y)
-            .fold(0, |acc, z| acc | z)
-            == 0
+    a.ct_eq(b).into()
 }
 
 /// Read an entire file while using the same code path on success or failure.

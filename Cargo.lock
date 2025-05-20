@@ -211,6 +211,7 @@ dependencies = [
  "rand 0.9.1",
  "secrecy",
  "sha2",
+ "subtle",
  "tempfile",
  "zeroize",
 ]
