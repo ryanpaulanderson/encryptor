@@ -87,6 +87,19 @@ fn quarter_round(state: &mut [u32; 16], a: usize, b: usize, c: usize, d: usize) 
     state[b] = rotl(state[b] ^ state[c], 7);
 }
 
+macro_rules! double_round {
+    ($state:expr) => {
+        quarter_round($state, 0, 4, 8, 12);
+        quarter_round($state, 1, 5, 9, 13);
+        quarter_round($state, 2, 6, 10, 14);
+        quarter_round($state, 3, 7, 11, 15);
+        quarter_round($state, 0, 5, 10, 15);
+        quarter_round($state, 1, 6, 11, 12);
+        quarter_round($state, 2, 7, 8, 13);
+        quarter_round($state, 3, 4, 9, 14);
+    };
+}
+
 #[inline(always)]
 unsafe fn xor_in_place(dst: &mut [u8], src: &[u8]) {
     let n = dst.len().min(src.len());
@@ -113,96 +126,10 @@ fn chacha20_block_bytes(key_bytes: &[u8; 32], counter: u32, nonce: &[u8; 12]) ->
         state[13 + i] = u32::from_le_bytes(nonce[4 * i..4 * i + 4].try_into().unwrap());
     }
     let mut working = state;
-    // 20 rounds, unrolled
-    quarter_round(&mut working, 0, 4, 8, 12);
-    quarter_round(&mut working, 1, 5, 9, 13);
-    quarter_round(&mut working, 2, 6, 10, 14);
-    quarter_round(&mut working, 3, 7, 11, 15);
-    quarter_round(&mut working, 0, 5, 10, 15);
-    quarter_round(&mut working, 1, 6, 11, 12);
-    quarter_round(&mut working, 2, 7, 8, 13);
-    quarter_round(&mut working, 3, 4, 9, 14);
-
-    quarter_round(&mut working, 0, 4, 8, 12);
-    quarter_round(&mut working, 1, 5, 9, 13);
-    quarter_round(&mut working, 2, 6, 10, 14);
-    quarter_round(&mut working, 3, 7, 11, 15);
-    quarter_round(&mut working, 0, 5, 10, 15);
-    quarter_round(&mut working, 1, 6, 11, 12);
-    quarter_round(&mut working, 2, 7, 8, 13);
-    quarter_round(&mut working, 3, 4, 9, 14);
-
-    quarter_round(&mut working, 0, 4, 8, 12);
-    quarter_round(&mut working, 1, 5, 9, 13);
-    quarter_round(&mut working, 2, 6, 10, 14);
-    quarter_round(&mut working, 3, 7, 11, 15);
-    quarter_round(&mut working, 0, 5, 10, 15);
-    quarter_round(&mut working, 1, 6, 11, 12);
-    quarter_round(&mut working, 2, 7, 8, 13);
-    quarter_round(&mut working, 3, 4, 9, 14);
-
-    quarter_round(&mut working, 0, 4, 8, 12);
-    quarter_round(&mut working, 1, 5, 9, 13);
-    quarter_round(&mut working, 2, 6, 10, 14);
-    quarter_round(&mut working, 3, 7, 11, 15);
-    quarter_round(&mut working, 0, 5, 10, 15);
-    quarter_round(&mut working, 1, 6, 11, 12);
-    quarter_round(&mut working, 2, 7, 8, 13);
-    quarter_round(&mut working, 3, 4, 9, 14);
-
-    quarter_round(&mut working, 0, 4, 8, 12);
-    quarter_round(&mut working, 1, 5, 9, 13);
-    quarter_round(&mut working, 2, 6, 10, 14);
-    quarter_round(&mut working, 3, 7, 11, 15);
-    quarter_round(&mut working, 0, 5, 10, 15);
-    quarter_round(&mut working, 1, 6, 11, 12);
-    quarter_round(&mut working, 2, 7, 8, 13);
-    quarter_round(&mut working, 3, 4, 9, 14);
-
-    quarter_round(&mut working, 0, 4, 8, 12);
-    quarter_round(&mut working, 1, 5, 9, 13);
-    quarter_round(&mut working, 2, 6, 10, 14);
-    quarter_round(&mut working, 3, 7, 11, 15);
-    quarter_round(&mut working, 0, 5, 10, 15);
-    quarter_round(&mut working, 1, 6, 11, 12);
-    quarter_round(&mut working, 2, 7, 8, 13);
-    quarter_round(&mut working, 3, 4, 9, 14);
-
-    quarter_round(&mut working, 0, 4, 8, 12);
-    quarter_round(&mut working, 1, 5, 9, 13);
-    quarter_round(&mut working, 2, 6, 10, 14);
-    quarter_round(&mut working, 3, 7, 11, 15);
-    quarter_round(&mut working, 0, 5, 10, 15);
-    quarter_round(&mut working, 1, 6, 11, 12);
-    quarter_round(&mut working, 2, 7, 8, 13);
-    quarter_round(&mut working, 3, 4, 9, 14);
-
-    quarter_round(&mut working, 0, 4, 8, 12);
-    quarter_round(&mut working, 1, 5, 9, 13);
-    quarter_round(&mut working, 2, 6, 10, 14);
-    quarter_round(&mut working, 3, 7, 11, 15);
-    quarter_round(&mut working, 0, 5, 10, 15);
-    quarter_round(&mut working, 1, 6, 11, 12);
-    quarter_round(&mut working, 2, 7, 8, 13);
-    quarter_round(&mut working, 3, 4, 9, 14);
-
-    quarter_round(&mut working, 0, 4, 8, 12);
-    quarter_round(&mut working, 1, 5, 9, 13);
-    quarter_round(&mut working, 2, 6, 10, 14);
-    quarter_round(&mut working, 3, 7, 11, 15);
-    quarter_round(&mut working, 0, 5, 10, 15);
-    quarter_round(&mut working, 1, 6, 11, 12);
-    quarter_round(&mut working, 2, 7, 8, 13);
-    quarter_round(&mut working, 3, 4, 9, 14);
-
-    quarter_round(&mut working, 0, 4, 8, 12);
-    quarter_round(&mut working, 1, 5, 9, 13);
-    quarter_round(&mut working, 2, 6, 10, 14);
-    quarter_round(&mut working, 3, 7, 11, 15);
-    quarter_round(&mut working, 0, 5, 10, 15);
-    quarter_round(&mut working, 1, 6, 11, 12);
-    quarter_round(&mut working, 2, 7, 8, 13);
-    quarter_round(&mut working, 3, 4, 9, 14);
+    // 20 rounds
+    for _ in 0..10 {
+        double_round!(&mut working);
+    }
     for i in 0..16 {
         working[i] = working[i].wrapping_add(state[i]);
     }
