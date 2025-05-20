@@ -2,15 +2,14 @@
 // Dependencies in Cargo.toml:
 // clap = { version = "4", features = ["derive"] }
 // rand = "0.8"
-// anyhow = "1.0"
 // argon2 = "0.4"
 // zeroize = "1.5"
 // sha2 = "0.10"
 // hex = "0.4"
 
-use anyhow::{bail, Result};
 use clap::{Args, Parser, Subcommand};
-use rand::{rngs::OsRng, RngCore};
+use encryptor::error::{Error, Result};
+use rand::{rngs::OsRng, TryRngCore};
 use sha2::{Digest, Sha256};
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufReader, BufWriter, Read, Write};
@@ -101,7 +100,14 @@ struct ModeArgs {
     parallelism: u32,
 }
 
-fn main() -> Result<()> {
+fn main() {
+    if let Err(e) = try_main() {
+        eprintln!("{}", e);
+        std::process::exit(1);
+    }
+}
+
+fn try_main() -> Result<()> {
     let cli = Cli::parse();
     let (decrypting, args) = match cli.command {
         Command::Encrypt(a) => (false, a),
@@ -115,13 +121,13 @@ fn main() -> Result<()> {
     };
     let max_mem = 1024 * 1024;
     if cfg.mem_cost_kib > max_mem {
-        bail!("--mem-size too large");
+        return Err(Error::FormatError("--mem-size too large"));
     }
     let cpus = std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(1) as u32;
     if cfg.parallelism > cpus {
-        bail!("--parallelism too high");
+        return Err(Error::FormatError("--parallelism too high"));
     }
 
     if !decrypting {
@@ -138,9 +144,9 @@ fn main() -> Result<()> {
         header.push(1);
         header.extend_from_slice(&[0; 3]);
         let mut salt = [0u8; 16];
-        OsRng.fill_bytes(&mut salt);
+        OsRng.try_fill_bytes(&mut salt).unwrap();
         let mut nonce = [0u8; 12];
-        OsRng.fill_bytes(&mut nonce);
+        OsRng.try_fill_bytes(&mut nonce).unwrap();
         header.extend_from_slice(&salt);
         header.extend_from_slice(&nonce);
         writer.write_all(&header)?;
@@ -203,13 +209,13 @@ fn main() -> Result<()> {
         if let Some(expected_hex) = &args.verify_hash {
             let actual_hex = sha256_file(&args.input_file)?;
             if !ct_eq(actual_hex.as_bytes(), expected_hex.as_bytes()) {
-                bail!("Hash mismatch");
+                return Err(Error::FormatError("Hash mismatch"));
             }
         }
 
         let file_len = fs::metadata(&args.input_file)?.len() as usize;
         if file_len < HEADER_LEN + 16 {
-            bail!("Input too short");
+            return Err(Error::FormatError("Input too short"));
         }
 
         let mut reader = BufReader::new(File::open(&args.input_file)?);
@@ -219,7 +225,7 @@ fn main() -> Result<()> {
         let magic_ok = ct_eq(&header[..4], MAGIC);
         let version_ok = ct_eq(&[header[4]], &[1]);
         if !magic_ok || !version_ok {
-            bail!("Invalid header");
+            return Err(Error::FormatError("Invalid header"));
         }
         let mut salt: [u8; 16] = header[8..24].try_into().unwrap();
         let mut nonce: [u8; 12] = header[24..36].try_into().unwrap();
@@ -286,7 +292,7 @@ fn main() -> Result<()> {
             writer.flush()?; // ensure drop
             drop(writer);
             let _ = fs::remove_file(&args.output_file);
-            bail!("Authentication failure");
+            return Err(Error::AuthFailure);
         }
         writer.flush()?;
 
