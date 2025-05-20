@@ -40,6 +40,28 @@ let plain = encrypt_decrypt(&cipher, &key, &nonce);
 assert_eq!(plain, b"hello");
 ```
 
+## Library API Overview
+
+This crate exposes several small utilities used by the command line tool and
+tests:
+
+- `Argon2Config` lets you tune the memory cost, number of passes and
+  parallelism used by the Argon2id key derivation.
+- `derive_key(password, salt, cfg)` produces a 32 byte ChaCha20 key wrapped in
+  [`Secret<[u8; 32]>`](https://docs.rs/secrecy/latest/secrecy/struct.Secret.html).
+- `encrypt_decrypt` processes a byte slice and returns the encrypted or
+  decrypted output.
+- `encrypt_decrypt_in_place` operates on a buffer in place while updating an
+  external counter to support streaming.
+- `chacha20_block` exposes the raw ChaCha20 block function which is verified
+  against RFC&nbsp;8439 test vectors.
+- `ct_eq` performs constant-time equality comparisons.
+- `read_file_ct` reads files using the same code path for success and error
+  cases to reduce leakage via timing.
+- `sign` and `verify` create or validate detached Ed25519 signatures.
+- `lock` and `unlock` wrap the platform `mlock` and `munlock` calls so secrets
+  can be kept out of swap.
+
 ## Building
 
 ```bash
@@ -112,6 +134,20 @@ signing and verification. Keys can be generated using
 `openssl rand -out priv.key 32` and deriving the public key with a tool such as
 [`ed25519-dalek`](https://docs.rs/ed25519-dalek/).
 
+## File Format
+
+Files created by `chacha20_poly1305` start with a fixed size header:
+
+1. 4 byte magic identifier `CPV1`.
+2. 1 byte version field.
+3. 3 reserved bytes set to zero.
+4. 16 byte Argon2 salt.
+5. 12 byte ChaCha20 nonce.
+
+The ciphertext is written next followed by a 16 byte Poly1305 tag.  When a
+signing key is supplied the final 64 bytes contain an Ed25519 signature over the
+header, ciphertext and tag.
+
 ### Error Handling
 
 The program exits with a non-zero status on failure. Errors are sanitized and
@@ -137,6 +173,16 @@ cargo test --offline
 ```
 
 This will compile the project and execute the tests found in the `tests/` directory entirely offline once the dependencies have been fetched.
+The suite includes integration tests that drive the command line tool as well
+as compile‑fail cases ensuring certain API misuses fail to build.
+
+Criterion benchmarks can be executed with:
+
+```bash
+cargo bench --bench encryptor_benchmarks --offline
+```
+
+Running `cargo bench` also requires the dependencies to be vendored beforehand.
 
 ## Continuous Deployment
 
