@@ -131,10 +131,25 @@ pub fn derive_key(password: &str, salt: &[u8; 16], cfg: &Argon2Config) -> Result
     Ok(Secret::new(key_bytes))
 }
 
+/// Rotate `v` left by `c` bits.
+///
+/// # Examples
+///
+/// ```ignore
+/// assert_eq!(encryptor::rotl(0x0123_4567, 8), 0x23_4567_01);
+/// ```
 fn rotl(v: u32, c: u32) -> u32 {
     v.rotate_left(c)
 }
 
+/// Perform a single ChaCha quarter round on `state`.
+///
+/// # Examples
+///
+/// ```ignore
+/// let mut s = [0u32; 16];
+/// encryptor::quarter_round(&mut s, 0, 1, 2, 3);
+/// ```
 fn quarter_round(state: &mut [u32; 16], a: usize, b: usize, c: usize, d: usize) {
     state[a] = state[a].wrapping_add(state[b]);
     state[d] = rotl(state[d] ^ state[a], 16);
@@ -160,6 +175,20 @@ macro_rules! double_round {
 }
 
 #[inline(always)]
+/// XOR `src` into `dst` in place.
+///
+/// # Safety
+///
+/// This function is unsafe because it performs unchecked pointer arithmetic.
+///
+/// # Examples
+///
+/// ```ignore
+/// let mut data = [0u8; 4];
+/// let mask = [1u8; 4];
+/// unsafe { encryptor::xor_in_place(&mut data, &mask) };
+/// assert_eq!(data, mask);
+/// ```
 unsafe fn xor_in_place(dst: &mut [u8], src: &[u8]) {
     let n = dst.len().min(src.len());
     let d = dst.as_mut_ptr();
@@ -171,6 +200,15 @@ unsafe fn xor_in_place(dst: &mut [u8], src: &[u8]) {
 }
 
 #[inline(always)]
+/// Generate a ChaCha20 keystream block.
+///
+/// # Examples
+///
+/// ```ignore
+/// let key = [0u8; 32];
+/// let block = encryptor::chacha20_block_bytes(&key, 0, &[0u8; 12]);
+/// assert_eq!(block.len(), 64);
+/// ```
 fn chacha20_block_bytes(key_bytes: &[u8; 32], counter: u32, nonce: &[u8; 12]) -> [u8; 64] {
     let constants: [u8; 16] = *b"expand 32-byte k";
     let mut state = [0u32; 16];
