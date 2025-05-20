@@ -1,6 +1,7 @@
 use encryptor::{
     chacha20_block, ct_eq, derive_key, encrypt_decrypt, poly1305_tag, read_file_ct, Argon2Config,
 };
+use secrecy::ExposeSecret;
 
 #[test]
 fn encrypt_decrypt_roundtrip() {
@@ -128,7 +129,7 @@ fn derive_key_custom_params() {
     argon2
         .hash_password_into(password.as_bytes(), &salt, &mut expected)
         .unwrap();
-    assert_eq!(key.to_vec(), expected.to_vec());
+    assert_eq!(key.expose_secret().to_vec(), expected.to_vec());
 }
 
 #[test]

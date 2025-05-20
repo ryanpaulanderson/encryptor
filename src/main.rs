@@ -27,6 +27,7 @@ use poly1305::{
     universal_hash::{KeyInit, UniversalHash},
     Block, Key, Poly1305,
 };
+use secrecy::ExposeSecret;
 
 fn poly_update_stream(poly: &mut Poly1305, mut data: &[u8], leftover: &mut Vec<u8>) {
     if !leftover.is_empty() {
@@ -144,7 +145,7 @@ fn main() -> Result<()> {
         header.extend_from_slice(&nonce);
         writer.write_all(&header)?;
 
-        let mut key = derive_key(&args.password, &salt, &cfg)?;
+        let key = derive_key(&args.password, &salt, &cfg)?;
         let mut block0 = chacha20_block(&key, 0, &nonce);
         let mut r_bytes = [0u8; 16];
         r_bytes.copy_from_slice(&block0[..16]);
@@ -194,8 +195,7 @@ fn main() -> Result<()> {
         writer.write_all(tag.as_slice())?;
         writer.flush()?;
 
-        key.zeroize();
-        unlock(&key).ok();
+        unlock(key.expose_secret()).ok();
         salt.zeroize();
         nonce.zeroize();
         header.zeroize();
@@ -224,7 +224,7 @@ fn main() -> Result<()> {
         let mut salt: [u8; 16] = header[8..24].try_into().unwrap();
         let mut nonce: [u8; 12] = header[24..36].try_into().unwrap();
 
-        let mut key = derive_key(&args.password, &salt, &cfg)?;
+        let key = derive_key(&args.password, &salt, &cfg)?;
         let mut block0 = chacha20_block(&key, 0, &nonce);
         let mut r_bytes = [0u8; 16];
         r_bytes.copy_from_slice(&block0[..16]);
@@ -290,8 +290,7 @@ fn main() -> Result<()> {
         }
         writer.flush()?;
 
-        key.zeroize();
-        unlock(&key).ok();
+        unlock(key.expose_secret()).ok();
         nonce.zeroize();
         salt.zeroize();
     }
