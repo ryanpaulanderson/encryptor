@@ -43,5 +43,5 @@ jobs:
         run: |
           cargo fmt -- --check
           cargo clippy -- -D warnings
-          cargo test --offline
+          cargo test
           cargo audit --deny warnings
