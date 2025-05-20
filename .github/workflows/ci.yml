@@ -43,5 +43,46 @@ jobs:
         run: |
           cargo fmt -- --check
           cargo clippy -- -D warnings
-          RUST_TEST_THREADS=$(nproc) cargo test
+          RUST_TEST_THREADS=$(nproc) cargo test --offline
           cargo audit --deny warnings
+
+  benchmark:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+      - name: Cache cargo-benchcmp
+        id: cache-benchcmp
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/cargo-benchcmp
+          key: ${{ runner.os }}-cargo-benchcmp-${{ hashFiles('**/Cargo.lock') }}
+      - name: Install cargo-benchcmp
+        if: steps.cache-benchcmp.outputs.cache-hit != 'true'
+        run: cargo install cargo-benchcmp
+      - name: Run benches on PR head
+        run: cargo bench -- --save-baseline pr.json
+      - name: Run benches on main
+        run: |
+          git fetch origin main
+          git checkout origin/main
+          cargo bench -- --save-comparison main.json
+      - name: Compare benches
+        run: cargo benchcmp main.json pr.json > bench.diff
+      - name: Post benchmark report
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const diff = require('fs').readFileSync('bench.diff','utf8');
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `## 📊 Benchmark delta\n\`\`\`\n${diff}\n\`\`\``
+            });
+
