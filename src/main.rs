@@ -1,11 +1,8 @@
-// src/main.rs
-// Dependencies in Cargo.toml:
-// clap = { version = "4", features = ["derive"] }
-// rand = "0.8"
-// argon2 = "0.4"
-// zeroize = "1.5"
-// sha2 = "0.10"
-// hex = "0.4"
+//! Command line interface for the `encryptor` crate.
+//!
+//! This binary encrypts and decrypts files using ChaCha20-Poly1305 with an
+//! Argon2 key derivation function.  Run `chacha20_poly1305 --help` to see the
+//! available options.
 
 use clap::{Args, Parser, Subcommand};
 use encryptor::error::{set_verbose, Error, Result};

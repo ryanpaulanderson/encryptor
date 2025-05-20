@@ -1,20 +1,30 @@
+//! Error types used by the [`encryptor`](crate) crate.
+
 use std::fmt;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 static VERBOSE: AtomicBool = AtomicBool::new(false);
 
+/// Enable or disable verbose error output for conversions from `std::io::Error`
+/// and `argon2::Error`.
 pub fn set_verbose(val: bool) {
     VERBOSE.store(val, Ordering::Relaxed);
 }
 
+/// Errors that can occur when using [`encryptor`](crate).
 #[derive(Debug)]
 pub enum Error {
+    /// Underlying I/O error kind when reading or writing files.
     Io(std::io::ErrorKind),
+    /// Error produced by the Argon2 library.
     Argon2(argon2::Error),
+    /// Authentication tag verification failed during decryption.
     AuthFailure,
+    /// Input was malformed or otherwise invalid.
     FormatError(&'static str),
 }
 
+/// Convenient `Result` alias used throughout the crate.
 pub type Result<T> = std::result::Result<T, Error>;
 
 impl fmt::Display for Error {

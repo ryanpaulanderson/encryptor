@@ -1,3 +1,26 @@
+#![deny(missing_docs)]
+//! ChaCha20-Poly1305 encryption utilities with an Argon2 key derivation.
+//!
+//! This crate provides simple helper functions for deriving encryption keys
+//! using Argon2 and performing in-place or buffer-to-buffer encryption with
+//! the ChaCha20 stream cipher.  The implementation is intentionally minimal and
+//! suitable for experimentation rather than production use.
+//!
+//! # Examples
+//!
+//! Encrypt and decrypt a short message:
+//!
+//! ```
+//! use encryptor::{Argon2Config, derive_key, encrypt_decrypt};
+//!
+//! let cfg = Argon2Config::default();
+//! let key = derive_key("password", b"0123456789abcdef", &cfg).unwrap();
+//! let nonce = [0u8; 12];
+//! let cipher = encrypt_decrypt(b"hello", &key, &nonce);
+//! let plain = encrypt_decrypt(&cipher, &key, &nonce);
+//! assert_eq!(plain, b"hello");
+//! ```
+
 pub mod error;
 use crate::error::{Error, Result};
 use argon2::{Algorithm, Argon2, Params, Version};
@@ -10,16 +33,24 @@ use std::io::Read;
 use std::path::Path;
 use zeroize::Zeroize;
 
+/// File header magic bytes identifying the ChaCha20-Poly1305 format.
 pub const MAGIC: &[u8; 4] = b"CPV1"; // ChaChaPoly AEAD v1
+/// Number of bytes in the file header.
 pub const HEADER_LEN: usize = 36;
 
+/// Configuration parameters for [`derive_key`].
+#[derive(Clone, Copy, Debug)]
 pub struct Argon2Config {
+    /// Memory cost in kibibytes used by the KDF.
     pub mem_cost_kib: u32,
+    /// Number of hashing passes.
     pub time_cost: u32,
+    /// Degree of parallelism.
     pub parallelism: u32,
 }
 
 impl Default for Argon2Config {
+    /// Provide conservative default parameters.
     fn default() -> Self {
         Self {
             mem_cost_kib: 64 * 1024,
@@ -30,6 +61,11 @@ impl Default for Argon2Config {
 }
 
 #[cfg(unix)]
+/// Unlock memory previously protected with [`lock`].
+///
+/// # Errors
+///
+/// Returns an [`std::io::Error`] if the `munlock` syscall fails.
 pub fn unlock(buf: &[u8]) -> std::io::Result<()> {
     let ret = unsafe { munlock(buf.as_ptr() as *const _, buf.len()) };
     if ret == 0 {
@@ -40,6 +76,11 @@ pub fn unlock(buf: &[u8]) -> std::io::Result<()> {
 }
 
 #[cfg(unix)]
+/// Lock memory to prevent swapping it to disk.
+///
+/// # Errors
+///
+/// Returns an [`std::io::Error`] if the `mlock` syscall fails.
 pub fn lock(buf: &[u8]) -> std::io::Result<()> {
     let ret = unsafe { mlock(buf.as_ptr() as *const _, buf.len()) };
     if ret == 0 {
@@ -50,15 +91,33 @@ pub fn lock(buf: &[u8]) -> std::io::Result<()> {
 }
 
 #[cfg(not(unix))]
+/// Stub on non-Unix systems that always succeeds.
 pub fn lock(_buf: &[u8]) -> std::io::Result<()> {
     Ok(())
 }
 
 #[cfg(not(unix))]
+/// Stub on non-Unix systems that always succeeds.
 pub fn unlock(_buf: &[u8]) -> std::io::Result<()> {
     Ok(())
 }
 
+/// Derive a ChaCha20 key from `password` and `salt` using Argon2id.
+///
+/// # Errors
+///
+/// Returns [`Error`] if the Argon2 computation fails or if locking the output
+/// buffer is not possible.
+///
+/// # Examples
+///
+/// ```
+/// use encryptor::{derive_key, Argon2Config};
+/// use secrecy::ExposeSecret;
+/// let cfg = Argon2Config::default();
+/// let key = derive_key("pw", b"0123456789abcdef", &cfg).unwrap();
+/// assert_eq!(key.expose_secret().len(), 32);
+/// ```
 pub fn derive_key(password: &str, salt: &[u8; 16], cfg: &Argon2Config) -> Result<Secret<[u8; 32]>> {
     let params =
         Params::new(cfg.mem_cost_kib, cfg.time_cost, cfg.parallelism, None).map_err(Error::from)?;
@@ -141,12 +200,31 @@ fn chacha20_block_bytes(key_bytes: &[u8; 32], counter: u32, nonce: &[u8; 12]) ->
     block
 }
 
+/// Compute the ChaCha20 block keystream for the given counter and nonce.
+///
+/// # Examples
+/// ```
+/// use encryptor::{chacha20_block, derive_key, Argon2Config};
+/// let cfg = Argon2Config::default();
+/// let key = derive_key("pw", b"0123456789abcdef", &cfg).unwrap();
+/// let block = chacha20_block(&key, 0, &[0u8; 12]);
+/// assert_eq!(block.len(), 64);
+/// ```
 pub fn chacha20_block(key: &Secret<[u8; 32]>, counter: u32, nonce: &[u8; 12]) -> [u8; 64] {
     chacha20_block_bytes(key.expose_secret(), counter, nonce)
 }
 
 use subtle::ConstantTimeEq;
 
+/// Perform a constant-time equality check.
+///
+/// # Examples
+///
+/// ```
+/// use encryptor::ct_eq;
+/// assert!(ct_eq(b"a", b"a"));
+/// assert!(!ct_eq(b"a", b"b"));
+/// ```
 pub fn ct_eq(a: &[u8], b: &[u8]) -> bool {
     a.ct_eq(b).into()
 }
@@ -156,6 +234,21 @@ pub fn ct_eq(a: &[u8], b: &[u8]) -> bool {
 /// This aims to keep timing similar for error and success cases but it is not a
 /// strong constant-time guarantee. True constant-time I/O would require
 /// operating system support and is outside the scope of this crate.
+///
+/// # Errors
+///
+/// Returns [`Error`] if the file cannot be read.
+///
+/// # Examples
+///
+/// ```
+/// use encryptor::read_file_ct;
+/// use std::io::Write;
+/// let mut tmp = tempfile::NamedTempFile::new().unwrap();
+/// writeln!(tmp, "hello").unwrap();
+/// let data = read_file_ct(tmp.path()).unwrap();
+/// assert!(data.starts_with(b"hello"));
+/// ```
 pub fn read_file_ct(path: &Path) -> Result<Vec<u8>> {
     let mut buf = Vec::new();
     let dummy = [0u8; 1];
@@ -172,6 +265,19 @@ pub fn read_file_ct(path: &Path) -> Result<Vec<u8>> {
     Ok(buf)
 }
 
+/// Encrypt or decrypt `data` returning a new `Vec<u8>`.
+///
+/// # Examples
+///
+/// ```
+/// use encryptor::{encrypt_decrypt, derive_key, Argon2Config};
+/// let cfg = Argon2Config::default();
+/// let key = derive_key("pw", b"0123456789abcdef", &cfg).unwrap();
+/// let nonce = [0u8; 12];
+/// let cipher = encrypt_decrypt(b"hello", &key, &nonce);
+/// let plain = encrypt_decrypt(&cipher, &key, &nonce);
+/// assert_eq!(plain, b"hello");
+/// ```
 pub fn encrypt_decrypt(data: &[u8], key: &Secret<[u8; 32]>, nonce: &[u8; 12]) -> Vec<u8> {
     let mut out = data.to_vec();
     let mut counter = 1u32;
@@ -179,6 +285,25 @@ pub fn encrypt_decrypt(data: &[u8], key: &Secret<[u8; 32]>, nonce: &[u8; 12]) ->
     out
 }
 
+/// Encrypt or decrypt `data` in place advancing `counter` as blocks are
+/// processed.
+///
+/// `counter` should start at `1` when encrypting/decrypting whole messages.
+///
+/// # Examples
+///
+/// ```
+/// use encryptor::{encrypt_decrypt_in_place, derive_key, Argon2Config};
+/// let cfg = Argon2Config::default();
+/// let key = derive_key("pw", b"0123456789abcdef", &cfg).unwrap();
+/// let nonce = [0u8; 12];
+/// let mut data = b"hello".to_vec();
+/// let mut enc_ctr = 1u32;
+/// encrypt_decrypt_in_place(&mut data, &key, &nonce, &mut enc_ctr);
+/// let mut dec_ctr = 1u32;
+/// encrypt_decrypt_in_place(&mut data, &key, &nonce, &mut dec_ctr);
+/// assert_eq!(data, b"hello");
+/// ```
 pub fn encrypt_decrypt_in_place(
     data: &mut [u8],
     key: &Secret<[u8; 32]>,
