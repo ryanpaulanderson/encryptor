@@ -131,6 +131,19 @@ fn try_main() -> Result<()> {
         return Err(Error::FormatError("--parallelism too high"));
     }
 
+    const COUNTER_MAX_BYTES: u64 = (u32::MAX as u64) * 64;
+    let file_size = fs::metadata(&args.input_file)?.len();
+    let too_large = if decrypting {
+        file_size.saturating_sub((HEADER_LEN + 16) as u64) >= COUNTER_MAX_BYTES
+    } else {
+        file_size >= COUNTER_MAX_BYTES
+    };
+    if too_large {
+        return Err(Error::FormatError(
+            "Input file too large for 32-bit counter",
+        ));
+    }
+
     if !decrypting {
         let mut reader = BufReader::new(File::open(&args.input_file)?);
         let mut out_opts = OpenOptions::new();
