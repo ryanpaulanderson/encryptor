@@ -26,7 +26,8 @@ After installing the toolchain you can vendor the dependencies and compile the b
 ## Getting started
 
 The library can also be used directly from Rust code. The full API
-documentation is available on [docs.rs](https://docs.rs/encryptor).
+documentation can be generated locally using `cargo doc --no-deps` and is
+included in the repository under the `docs/` directory.
 
 ```rust
 use encryptor::{Argon2Config, derive_key, encrypt_decrypt};
