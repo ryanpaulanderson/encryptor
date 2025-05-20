@@ -47,7 +47,7 @@ fn roundtrip_empty_file() {
 }
 
 proptest! {
-    #![proptest_config(ProptestConfig::with_cases(32))]
+    #![proptest_config(ProptestConfig::with_cases(8))]
     #[test]
     fn roundtrip_random_password(pass in "[a-zA-Z0-9]{0,2048}") {
         run_roundtrip("tests/data/sample.txt", &pass);

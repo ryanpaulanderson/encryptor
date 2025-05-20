@@ -1,4 +1,5 @@
-use anyhow::{anyhow, Result};
+pub mod error;
+use crate::error::{Error, Result};
 use argon2::{Algorithm, Argon2, Params, Version};
 #[cfg(unix)]
 use libc::{mlock, munlock};
@@ -58,15 +59,15 @@ pub fn unlock(_buf: &[u8]) -> std::io::Result<()> {
 }
 
 pub fn derive_key(password: &str, salt: &[u8], cfg: &Argon2Config) -> Result<Secret<[u8; 32]>> {
-    let params = Params::new(cfg.mem_cost_kib, cfg.time_cost, cfg.parallelism, None)
-        .map_err(|e| anyhow!(e))?;
+    let params =
+        Params::new(cfg.mem_cost_kib, cfg.time_cost, cfg.parallelism, None).map_err(Error::from)?;
     let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
     let mut key_bytes = [0u8; 32];
-    lock(&key_bytes)?;
+    lock(&key_bytes).map_err(Error::from)?;
     argon2
         .hash_password_into(password.as_bytes(), salt, &mut key_bytes)
-        .map_err(|e| anyhow!(e))?;
-    unlock(&key_bytes)?;
+        .map_err(Error::from)?;
+    unlock(&key_bytes).map_err(Error::from)?;
     Ok(Secret::new(key_bytes))
 }
 
@@ -178,12 +179,12 @@ pub fn read_file_ct(path: &Path) -> Result<Vec<u8>> {
     let dummy = [0u8; 1];
     match File::open(path) {
         Ok(mut f) => {
-            f.read_to_end(&mut buf)?;
+            f.read_to_end(&mut buf).map_err(Error::from)?;
         }
         Err(e) => {
             let mut empty = &dummy[..];
             let _ = empty.read_to_end(&mut buf);
-            return Err(anyhow!(e));
+            return Err(Error::from(e));
         }
     }
     Ok(buf)

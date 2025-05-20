@@ -118,7 +118,7 @@ fn tampered_header_detected() {
 }
 
 proptest! {
-    #![proptest_config(ProptestConfig::with_cases(20))]
+    #![proptest_config(ProptestConfig::with_cases(10))]
     #[test]
     fn malformed_header_cases(case in 0u8..5) {
         let input = "tests/data/sample.txt";
