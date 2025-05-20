@@ -3,6 +3,7 @@ use crate::error::{Error, Result};
 use argon2::{Algorithm, Argon2, Params, Version};
 #[cfg(unix)]
 use libc::{mlock, munlock};
+use rayon::prelude::*;
 use secrecy::{ExposeSecret, Secret};
 use std::fs::File;
 use std::io::Read;
@@ -86,6 +87,18 @@ fn quarter_round(state: &mut [u32; 16], a: usize, b: usize, c: usize, d: usize) 
     state[b] = rotl(state[b] ^ state[c], 7);
 }
 
+#[inline(always)]
+unsafe fn xor_in_place(dst: &mut [u8], src: &[u8]) {
+    let n = dst.len().min(src.len());
+    let d = dst.as_mut_ptr();
+    let s = src.as_ptr();
+    for i in 0..n {
+        // SAFETY: i < dst.len() and i < src.len()
+        *d.add(i) ^= *s.add(i);
+    }
+}
+
+#[inline(always)]
 fn chacha20_block_bytes(key_bytes: &[u8; 32], counter: u32, nonce: &[u8; 12]) -> [u8; 64] {
     let constants: [u8; 16] = *b"expand 32-byte k";
     let mut state = [0u32; 16];
@@ -100,16 +113,96 @@ fn chacha20_block_bytes(key_bytes: &[u8; 32], counter: u32, nonce: &[u8; 12]) ->
         state[13 + i] = u32::from_le_bytes(nonce[4 * i..4 * i + 4].try_into().unwrap());
     }
     let mut working = state;
-    for _ in 0..10 {
-        quarter_round(&mut working, 0, 4, 8, 12);
-        quarter_round(&mut working, 1, 5, 9, 13);
-        quarter_round(&mut working, 2, 6, 10, 14);
-        quarter_round(&mut working, 3, 7, 11, 15);
-        quarter_round(&mut working, 0, 5, 10, 15);
-        quarter_round(&mut working, 1, 6, 11, 12);
-        quarter_round(&mut working, 2, 7, 8, 13);
-        quarter_round(&mut working, 3, 4, 9, 14);
-    }
+    // 20 rounds, unrolled
+    quarter_round(&mut working, 0, 4, 8, 12);
+    quarter_round(&mut working, 1, 5, 9, 13);
+    quarter_round(&mut working, 2, 6, 10, 14);
+    quarter_round(&mut working, 3, 7, 11, 15);
+    quarter_round(&mut working, 0, 5, 10, 15);
+    quarter_round(&mut working, 1, 6, 11, 12);
+    quarter_round(&mut working, 2, 7, 8, 13);
+    quarter_round(&mut working, 3, 4, 9, 14);
+
+    quarter_round(&mut working, 0, 4, 8, 12);
+    quarter_round(&mut working, 1, 5, 9, 13);
+    quarter_round(&mut working, 2, 6, 10, 14);
+    quarter_round(&mut working, 3, 7, 11, 15);
+    quarter_round(&mut working, 0, 5, 10, 15);
+    quarter_round(&mut working, 1, 6, 11, 12);
+    quarter_round(&mut working, 2, 7, 8, 13);
+    quarter_round(&mut working, 3, 4, 9, 14);
+
+    quarter_round(&mut working, 0, 4, 8, 12);
+    quarter_round(&mut working, 1, 5, 9, 13);
+    quarter_round(&mut working, 2, 6, 10, 14);
+    quarter_round(&mut working, 3, 7, 11, 15);
+    quarter_round(&mut working, 0, 5, 10, 15);
+    quarter_round(&mut working, 1, 6, 11, 12);
+    quarter_round(&mut working, 2, 7, 8, 13);
+    quarter_round(&mut working, 3, 4, 9, 14);
+
+    quarter_round(&mut working, 0, 4, 8, 12);
+    quarter_round(&mut working, 1, 5, 9, 13);
+    quarter_round(&mut working, 2, 6, 10, 14);
+    quarter_round(&mut working, 3, 7, 11, 15);
+    quarter_round(&mut working, 0, 5, 10, 15);
+    quarter_round(&mut working, 1, 6, 11, 12);
+    quarter_round(&mut working, 2, 7, 8, 13);
+    quarter_round(&mut working, 3, 4, 9, 14);
+
+    quarter_round(&mut working, 0, 4, 8, 12);
+    quarter_round(&mut working, 1, 5, 9, 13);
+    quarter_round(&mut working, 2, 6, 10, 14);
+    quarter_round(&mut working, 3, 7, 11, 15);
+    quarter_round(&mut working, 0, 5, 10, 15);
+    quarter_round(&mut working, 1, 6, 11, 12);
+    quarter_round(&mut working, 2, 7, 8, 13);
+    quarter_round(&mut working, 3, 4, 9, 14);
+
+    quarter_round(&mut working, 0, 4, 8, 12);
+    quarter_round(&mut working, 1, 5, 9, 13);
+    quarter_round(&mut working, 2, 6, 10, 14);
+    quarter_round(&mut working, 3, 7, 11, 15);
+    quarter_round(&mut working, 0, 5, 10, 15);
+    quarter_round(&mut working, 1, 6, 11, 12);
+    quarter_round(&mut working, 2, 7, 8, 13);
+    quarter_round(&mut working, 3, 4, 9, 14);
+
+    quarter_round(&mut working, 0, 4, 8, 12);
+    quarter_round(&mut working, 1, 5, 9, 13);
+    quarter_round(&mut working, 2, 6, 10, 14);
+    quarter_round(&mut working, 3, 7, 11, 15);
+    quarter_round(&mut working, 0, 5, 10, 15);
+    quarter_round(&mut working, 1, 6, 11, 12);
+    quarter_round(&mut working, 2, 7, 8, 13);
+    quarter_round(&mut working, 3, 4, 9, 14);
+
+    quarter_round(&mut working, 0, 4, 8, 12);
+    quarter_round(&mut working, 1, 5, 9, 13);
+    quarter_round(&mut working, 2, 6, 10, 14);
+    quarter_round(&mut working, 3, 7, 11, 15);
+    quarter_round(&mut working, 0, 5, 10, 15);
+    quarter_round(&mut working, 1, 6, 11, 12);
+    quarter_round(&mut working, 2, 7, 8, 13);
+    quarter_round(&mut working, 3, 4, 9, 14);
+
+    quarter_round(&mut working, 0, 4, 8, 12);
+    quarter_round(&mut working, 1, 5, 9, 13);
+    quarter_round(&mut working, 2, 6, 10, 14);
+    quarter_round(&mut working, 3, 7, 11, 15);
+    quarter_round(&mut working, 0, 5, 10, 15);
+    quarter_round(&mut working, 1, 6, 11, 12);
+    quarter_round(&mut working, 2, 7, 8, 13);
+    quarter_round(&mut working, 3, 4, 9, 14);
+
+    quarter_round(&mut working, 0, 4, 8, 12);
+    quarter_round(&mut working, 1, 5, 9, 13);
+    quarter_round(&mut working, 2, 6, 10, 14);
+    quarter_round(&mut working, 3, 7, 11, 15);
+    quarter_round(&mut working, 0, 5, 10, 15);
+    quarter_round(&mut working, 1, 6, 11, 12);
+    quarter_round(&mut working, 2, 7, 8, 13);
+    quarter_round(&mut working, 3, 4, 9, 14);
     for i in 0..16 {
         working[i] = working[i].wrapping_add(state[i]);
     }
@@ -178,15 +271,9 @@ pub fn read_file_ct(path: &Path) -> Result<Vec<u8>> {
 }
 
 pub fn encrypt_decrypt(data: &[u8], key: &Secret<[u8; 32]>, nonce: &[u8; 12]) -> Vec<u8> {
-    let key_bytes = key.expose_secret();
-    let mut out = Vec::with_capacity(data.len());
+    let mut out = data.to_vec();
     let mut counter = 1u32;
-    for chunk in data.chunks(64) {
-        let mut ks = chacha20_block_bytes(key_bytes, counter, nonce);
-        counter = counter.wrapping_add(1);
-        out.extend(chunk.iter().enumerate().map(|(i, &b)| b ^ ks[i]));
-        ks.zeroize();
-    }
+    encrypt_decrypt_in_place(&mut out, key, nonce, &mut counter);
     out
 }
 
@@ -197,12 +284,15 @@ pub fn encrypt_decrypt_in_place(
     counter: &mut u32,
 ) {
     let key_bytes = key.expose_secret();
-    for chunk in data.chunks_mut(64) {
-        let mut ks = chacha20_block_bytes(key_bytes, *counter, nonce);
-        *counter = counter.wrapping_add(1);
-        for (i, b) in chunk.iter_mut().enumerate() {
-            *b ^= ks[i];
+    let base = *counter;
+    let blocks = data.len().div_ceil(64);
+    data.par_chunks_mut(64).enumerate().for_each(|(i, chunk)| {
+        let ctr = base.wrapping_add(i as u32);
+        let mut ks = chacha20_block_bytes(key_bytes, ctr, nonce);
+        unsafe {
+            xor_in_place(chunk, &ks);
         }
         ks.zeroize();
-    }
+    });
+    *counter = base.wrapping_add(blocks as u32);
 }
