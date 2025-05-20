@@ -9,7 +9,7 @@
 
 use clap::{Args, Parser, Subcommand};
 use encryptor::error::{Error, Result};
-use rand::{rngs::OsRng, RngCore};
+use rand::{rngs::OsRng, TryRngCore};
 use sha2::{Digest, Sha256};
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufReader, BufWriter, Read, Write};
@@ -144,9 +144,9 @@ fn try_main() -> Result<()> {
         header.push(1);
         header.extend_from_slice(&[0; 3]);
         let mut salt = [0u8; 16];
-        OsRng.fill_bytes(&mut salt);
+        OsRng.try_fill_bytes(&mut salt).unwrap();
         let mut nonce = [0u8; 12];
-        OsRng.fill_bytes(&mut nonce);
+        OsRng.try_fill_bytes(&mut nonce).unwrap();
         header.extend_from_slice(&salt);
         header.extend_from_slice(&nonce);
         writer.write_all(&header)?;
