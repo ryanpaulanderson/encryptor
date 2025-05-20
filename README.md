@@ -45,7 +45,7 @@ docker run --rm encryptor --help
 
 ```
 chacha20_poly1305 <encrypt|decrypt> <INPUT> <OUTPUT> <PASSWORD> \
-    [--verify-hash <HEX>] [--mem-size <MiB>] [--iterations <N>] [--parallelism <N>]
+    [--verify-hash <HEX>] [--mem-size <MiB>] [--iterations <N>] [--parallelism <N>] [--verbose]
 ```
 
 Arguments:
@@ -57,6 +57,7 @@ Arguments:
 - `--mem-size` – Argon2 memory usage in MiB (default: 64).
 - `--iterations` – Argon2 iterations/passes (default: 4).
 - `--parallelism` – Argon2 parallelism degree (default: 1).
+- `--verbose` – print detailed error messages for debugging.
 
 Example encrypt:
 
@@ -74,12 +75,15 @@ chacha20_poly1305 decrypt secret.bin plain.txt mypassword --verify-hash <hash>
 
 The program exits with a non-zero status on failure. Errors are sanitized and
 classified as I/O issues, Argon2 failures, format problems or authentication
-errors to aid troubleshooting without leaking sensitive details.
+errors to aid troubleshooting without leaking sensitive details. Pass
+`--verbose` to print the underlying OS error for debugging.
 
 ## Security Notes
 
 This tool reads input files using a constant-time routine and performs all tag
 comparisons using constant-time equality checks to reduce timing side channels.
+The Argon2 salt length is fixed at 16 bytes and enforced at compile time to
+avoid accidentally using weaker parameters.
 
 ## Running Tests
 

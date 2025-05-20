@@ -1,4 +1,11 @@
 use std::fmt;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+static VERBOSE: AtomicBool = AtomicBool::new(false);
+
+pub fn set_verbose(val: bool) {
+    VERBOSE.store(val, Ordering::Relaxed);
+}
 
 #[derive(Debug)]
 pub enum Error {
@@ -25,12 +32,18 @@ impl std::error::Error for Error {}
 
 impl From<std::io::Error> for Error {
     fn from(e: std::io::Error) -> Self {
+        if VERBOSE.load(Ordering::Relaxed) {
+            eprintln!("DEBUG: {:?}", e);
+        }
         Error::Io(e.kind())
     }
 }
 
 impl From<argon2::Error> for Error {
     fn from(e: argon2::Error) -> Self {
+        if VERBOSE.load(Ordering::Relaxed) {
+            eprintln!("DEBUG: {:?}", e);
+        }
         Error::Argon2(e)
     }
 }

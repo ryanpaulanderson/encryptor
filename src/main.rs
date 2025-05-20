@@ -8,7 +8,7 @@
 // hex = "0.4"
 
 use clap::{Args, Parser, Subcommand};
-use encryptor::error::{Error, Result};
+use encryptor::error::{set_verbose, Error, Result};
 use rand::{rngs::OsRng, TryRngCore};
 use sha2::{Digest, Sha256};
 use std::fs::{self, File, OpenOptions};
@@ -19,14 +19,12 @@ use std::path::PathBuf;
 use zeroize::Zeroize;
 
 use encryptor::{
-    chacha20_block, ct_eq, derive_key, encrypt_decrypt_in_place, unlock, Argon2Config, HEADER_LEN,
-    MAGIC,
+    chacha20_block, ct_eq, derive_key, encrypt_decrypt_in_place, Argon2Config, HEADER_LEN, MAGIC,
 };
 use poly1305::{
     universal_hash::{KeyInit, UniversalHash},
     Block, Key, Poly1305,
 };
-use secrecy::ExposeSecret;
 
 fn poly_update_stream(poly: &mut Poly1305, mut data: &[u8], leftover: &mut Vec<u8>) {
     if !leftover.is_empty() {
@@ -69,6 +67,8 @@ fn sha256_file(path: &PathBuf) -> Result<String> {
     about = "ChaCha20-Poly1305 AEAD with Argon2 KDF, file header, and optional hash check"
 )]
 struct Cli {
+    #[arg(long, help = "Enable verbose error messages", global = true)]
+    verbose: bool,
     #[command(subcommand)]
     command: Command,
 }
@@ -109,6 +109,7 @@ fn main() {
 
 fn try_main() -> Result<()> {
     let cli = Cli::parse();
+    set_verbose(cli.verbose);
     let (decrypting, args) = match cli.command {
         Command::Encrypt(a) => (false, a),
         Command::Decrypt(a) => (true, a),
@@ -201,7 +202,6 @@ fn try_main() -> Result<()> {
         writer.write_all(tag.as_slice())?;
         writer.flush()?;
 
-        unlock(key.expose_secret()).ok();
         salt.zeroize();
         nonce.zeroize();
         header.zeroize();
@@ -296,7 +296,6 @@ fn try_main() -> Result<()> {
         }
         writer.flush()?;
 
-        unlock(key.expose_secret()).ok();
         nonce.zeroize();
         salt.zeroize();
     }
