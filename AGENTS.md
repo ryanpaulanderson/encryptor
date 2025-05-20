@@ -15,6 +15,8 @@ This file defines guidance for AI assistants (Codex) when interacting with the *
    * Prefer `actions-rust-lang/setup-rust-toolchain@v1` with `cache: true` on CI.
 
 2. **Dependencies & Vendoring**
+   * Always ensure lockfile is version '3'
+   * We use rust version 2021
    ```sh
    cargo generate-lockfile       # ensure Cargo.lock exists
    cargo vendor                  # vendor crates into `vendor/`
