@@ -3,6 +3,12 @@ on:
   push:
     branches:
       - main
+    paths:
+      - '**/Cargo.toml'
+      - '**/Cargo.lock'
+      - 'src/**'
+      - 'tests/**'
+      - 'benches/**'
 
 permissions:
   contents: write
@@ -42,7 +48,7 @@ jobs:
 
       - name: Install cargo-audit
         if: steps.cache-audit.outputs.cache-hit != 'true'
-        run: cargo install --version ^0.17 cargo-audit
+        run: cargo install --version ^0.21 cargo-audit
 
       - name: Format
         run: cargo fmt -- --check

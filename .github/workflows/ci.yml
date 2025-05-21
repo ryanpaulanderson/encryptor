@@ -2,8 +2,27 @@ name: CI
 
 on:
   pull_request:
+    paths:
+      - '**/Cargo.toml'
+      - '**/Cargo.lock'
+      - 'src/**'
+      - 'tests/**'
+      - 'benches/**'
+      - '.github/workflows/ci.yml'
   push:
     branches: [main]
+    paths:
+      - '**/Cargo.toml'
+      - '**/Cargo.lock'
+      - 'src/**'
+      - 'tests/**'
+      - 'benches/**'
+      - '.github/workflows/ci.yml'
+
+permissions:
+  contents: read        # still allow checking out code
+  issues: write         # enable creating issue comments
+  pull-requests: write  # if you want to comment on PR threads
 
 jobs:
   build:
@@ -37,7 +56,7 @@ jobs:
 
       - name: Install cargo-audit
         if: steps.cache-audit.outputs.cache-hit != 'true'
-        run: cargo install --locked --version ^0.17 --jobs 4 cargo-audit
+        run: cargo install --locked --version ^0.21 --jobs 4 cargo-audit
 
       - name: Run checks
         run: |
@@ -91,7 +110,7 @@ jobs:
         run: critcmp main pr > bench.diff
 
       - name: Post benchmark report
-        uses: actions/github-script@v6
+        uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
