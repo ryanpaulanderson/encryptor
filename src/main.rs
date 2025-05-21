@@ -193,13 +193,11 @@ fn try_main() -> Result<()> {
 
     let verify_key = if decrypting {
         if let Some(p) = &args.verify_key {
-            let bytes = fs::read(p)?;
-            if bytes.len() != 32 {
+            let pk_bytes = fs::read(p)?;
+            if pk_bytes.len() != 32 {
                 return Err(Error::FormatError("Invalid key length"));
             }
-            let mut pk = [0u8; 32];
-            pk.copy_from_slice(&bytes);
-            Some(VerifyingKey::from_bytes(&pk).map_err(|_| Error::FormatError("Invalid key"))?)
+            Some(VerifyingKey::try_from(&pk_bytes[..]).map_err(|_| Error::FormatError("Invalid key"))?)
         } else {
             None
         }
