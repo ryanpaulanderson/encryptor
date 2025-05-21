@@ -48,7 +48,7 @@ tests:
 - `Argon2Config` lets you tune the memory cost, number of passes and
   parallelism used by the Argon2id key derivation.
 - `derive_key(password, salt, cfg)` produces a 32 byte ChaCha20 key wrapped in
-  [`Secret<[u8; 32]>`](https://docs.rs/secrecy/latest/secrecy/struct.Secret.html).
+  [`SecretBox<[u8; 32]>`](https://docs.rs/secrecy/latest/secrecy/struct.SecretBox.html).
 - `encrypt_decrypt` processes a byte slice and returns the encrypted or
   decrypted output.
 - `encrypt_decrypt_in_place` operates on a buffer in place while updating an
@@ -156,17 +156,7 @@ Keys can also be generated manually using `openssl rand -out priv.key 32` and
 deriving the public key with a tool such as
 [`ed25519-dalek`](https://docs.rs/ed25519-dalek/), but using our program is
 preferred because it performs the encryption and sets the permissions
-correctly. Alternatively, run
-
-```bash
-chacha20_poly1305 --generate-keys ./keys
-```
-
-to create `priv.key` and `pub.key` in the specified directory. On Unix systems
-the private key is written with permissions `0o600` so only the owner can read
-or write the file. When loading a signing key, a warning is printed if the file
-is more permissive. Using this helper ensures the keys are stored with the
-expected permissions and compatible format.
+correctly.
 
 ## File Format
 

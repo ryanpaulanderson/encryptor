@@ -1,0 +1,5 @@
+[toolchain]
+channel = "stable"
+components = ["rustfmt", "clippy"]
+# targets = [] # Optional: Add specific targets if you cross-compile, e.g., "wasm32-unknown-unknown"
+# profile = "default" # Optional: "default" or "minimal"
