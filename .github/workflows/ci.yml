@@ -17,6 +17,11 @@ on:
       - 'tests/**'
       - 'benches/**'
 
+permissions:
+  contents: read        # still allow checking out code
+  issues: write         # enable creating issue comments
+  pull-requests: write  # if you want to comment on PR threads
+
 jobs:
   build:
     runs-on: ubuntu-latest
