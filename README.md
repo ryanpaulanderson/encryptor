@@ -48,7 +48,7 @@ tests:
 - `Argon2Config` lets you tune the memory cost, number of passes and
   parallelism used by the Argon2id key derivation.
 - `derive_key(password, salt, cfg)` produces a 32 byte ChaCha20 key wrapped in
-  [`Secret<[u8; 32]>`](https://docs.rs/secrecy/latest/secrecy/struct.Secret.html).
+  [`SecretBox<[u8; 32]>`](https://docs.rs/secrecy/latest/secrecy/struct.SecretBox.html).
 - `encrypt_decrypt` processes a byte slice and returns the encrypted or
   decrypted output.
 - `encrypt_decrypt_in_place` operates on a buffer in place while updating an
