@@ -156,17 +156,7 @@ Keys can also be generated manually using `openssl rand -out priv.key 32` and
 deriving the public key with a tool such as
 [`ed25519-dalek`](https://docs.rs/ed25519-dalek/), but using our program is
 preferred because it performs the encryption and sets the permissions
-correctly. Alternatively, run
-
-```bash
-chacha20_poly1305 --generate-keys ./keys
-```
-
-to create `priv.key` and `pub.key` in the specified directory. On Unix systems
-the private key is written with permissions `0o600` so only the owner can read
-or write the file. When loading a signing key, a warning is printed if the file
-is more permissive. Using this helper ensures the keys are stored with the
-expected permissions and compatible format.
+correctly.
 
 ## File Format
 
