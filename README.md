@@ -100,6 +100,8 @@ Arguments:
 - `--parallelism` – Argon2 parallelism degree (default: 1).
 - `--sign-key` – path to an Ed25519 private key to sign the encrypted output.
 - `--verify-key` – path to an Ed25519 public key used to verify the signature.
+- `--key-password` – password used when loading or generating an encrypted
+  private key.
 - `--verbose` – print detailed error messages for debugging.
 - `--generate-keys` – generate a new Ed25519 key pair in the given directory and exit.
 
@@ -122,6 +124,13 @@ chacha20_poly1305 encrypt plain.txt secret.bin mypassword \
     --sign-key priv.key
 ```
 
+Using an encrypted key:
+
+```bash
+chacha20_poly1305 encrypt plain.txt secret.bin mypassword \
+    --sign-key priv.ekey --key-password secret
+```
+
 Example decrypt verifying the signature:
 
 ```bash
@@ -133,6 +142,12 @@ Example key generation:
 
 ```bash
 chacha20_poly1305 --generate-keys mykeys
+```
+
+With `--key-password` the private key is encrypted and written as `priv.ekey`:
+
+```bash
+chacha20_poly1305 --generate-keys mykeys --key-password secret
 ```
 
 Private keys must be 32-byte raw Ed25519 seeds and the public key is the

@@ -424,3 +424,168 @@ pub fn verify(data: &[u8], sig: &[u8], pub_key: &Ed25519PubKey) -> bool {
         false
     }
 }
+
+/// Magic bytes identifying an encrypted Ed25519 private key file.
+pub const KEY_MAGIC: &[u8; 6] = b"EDEKV1";
+
+/// Length in bytes of an encrypted private key created by [`encrypt_priv_key`].
+pub const ENC_KEY_LEN: usize = KEY_MAGIC.len() + 4 + 4 + 4 + 16 + 12 + 32 + 16;
+
+/// Encrypt an Ed25519 seed using ChaCha20-Poly1305 with an Argon2 key.
+pub fn encrypt_priv_key(seed: &[u8; 32], password: &str, cfg: &Argon2Config) -> Result<Vec<u8>> {
+    use poly1305::{
+        universal_hash::{KeyInit, UniversalHash},
+        Block, Key, Poly1305,
+    };
+    use rand_core::{OsRng, RngCore};
+
+    let mut salt = [0u8; 16];
+    OsRng.try_fill_bytes(&mut salt).unwrap();
+    let mut nonce = [0u8; 12];
+    OsRng.try_fill_bytes(&mut nonce).unwrap();
+    let key = derive_key(password, &salt, cfg)?;
+
+    let mut counter = 1u32;
+    let mut cipher = seed.to_vec();
+    encrypt_decrypt_in_place(&mut cipher, &key, &nonce, &mut counter);
+
+    let mut block0 = chacha20_block(&key, 0, &nonce);
+    let mut r_bytes = [0u8; 16];
+    r_bytes.copy_from_slice(&block0[..16]);
+    let mut s_bytes = [0u8; 16];
+    s_bytes.copy_from_slice(&block0[16..32]);
+    r_bytes[3] &= 15;
+    r_bytes[7] &= 15;
+    r_bytes[11] &= 15;
+    r_bytes[15] &= 15;
+    r_bytes[4] &= 252;
+    r_bytes[8] &= 252;
+    r_bytes[12] &= 252;
+    let r = u128::from_le_bytes(r_bytes);
+    let s = u128::from_le_bytes(s_bytes);
+    block0.zeroize();
+    r_bytes.zeroize();
+    s_bytes.zeroize();
+
+    let mut key_bytes = [0u8; 32];
+    key_bytes[..16].copy_from_slice(&r.to_le_bytes());
+    key_bytes[16..].copy_from_slice(&s.to_le_bytes());
+    let mut poly = Poly1305::new(Key::from_slice(&key_bytes));
+    key_bytes.zeroize();
+    poly.update_padded(&[]);
+    poly.update_padded(&cipher);
+    let mut len_block = [0u8; 16];
+    len_block[8..].copy_from_slice(&(cipher.len() as u64).to_le_bytes());
+    poly.update(&[Block::clone_from_slice(&len_block)]);
+    let tag = poly.finalize();
+
+    let mut out = Vec::with_capacity(ENC_KEY_LEN);
+    out.extend_from_slice(KEY_MAGIC);
+    out.extend_from_slice(&cfg.mem_cost_kib.to_le_bytes());
+    out.extend_from_slice(&cfg.time_cost.to_le_bytes());
+    out.extend_from_slice(&cfg.parallelism.to_le_bytes());
+    out.extend_from_slice(&salt);
+    out.extend_from_slice(&nonce);
+    out.extend_from_slice(&cipher);
+    out.extend_from_slice(tag.as_slice());
+
+    cipher.zeroize();
+    salt.zeroize();
+    nonce.zeroize();
+
+    Ok(out)
+}
+
+/// Decrypt an encrypted Ed25519 seed.
+pub fn decrypt_priv_key(data: &[u8], password: &str) -> Result<[u8; 32]> {
+    use poly1305::{
+        universal_hash::{KeyInit, UniversalHash},
+        Block, Key, Poly1305,
+    };
+
+    if data.len() != ENC_KEY_LEN {
+        return Err(Error::FormatError("Invalid key file length"));
+    }
+    if !ct_eq(&data[..KEY_MAGIC.len()], KEY_MAGIC) {
+        return Err(Error::FormatError("Invalid key file"));
+    }
+
+    let mem_cost = u32::from_le_bytes(
+        data[KEY_MAGIC.len()..KEY_MAGIC.len() + 4]
+            .try_into()
+            .unwrap(),
+    );
+    let time_cost = u32::from_le_bytes(
+        data[KEY_MAGIC.len() + 4..KEY_MAGIC.len() + 8]
+            .try_into()
+            .unwrap(),
+    );
+    let parallelism = u32::from_le_bytes(
+        data[KEY_MAGIC.len() + 8..KEY_MAGIC.len() + 12]
+            .try_into()
+            .unwrap(),
+    );
+    let mut salt: [u8; 16] = data[KEY_MAGIC.len() + 12..KEY_MAGIC.len() + 28]
+        .try_into()
+        .unwrap();
+    let mut nonce: [u8; 12] = data[KEY_MAGIC.len() + 28..KEY_MAGIC.len() + 40]
+        .try_into()
+        .unwrap();
+    let mut cipher: [u8; 32] = data[KEY_MAGIC.len() + 40..KEY_MAGIC.len() + 72]
+        .try_into()
+        .unwrap();
+    let tag_bytes: [u8; 16] = data[KEY_MAGIC.len() + 72..KEY_MAGIC.len() + 88]
+        .try_into()
+        .unwrap();
+
+    let cfg = Argon2Config {
+        mem_cost_kib: mem_cost,
+        time_cost,
+        parallelism,
+    };
+    let key = derive_key(password, &salt, &cfg)?;
+
+    let mut block0 = chacha20_block(&key, 0, &nonce);
+    let mut r_bytes = [0u8; 16];
+    r_bytes.copy_from_slice(&block0[..16]);
+    let mut s_bytes = [0u8; 16];
+    s_bytes.copy_from_slice(&block0[16..32]);
+    r_bytes[3] &= 15;
+    r_bytes[7] &= 15;
+    r_bytes[11] &= 15;
+    r_bytes[15] &= 15;
+    r_bytes[4] &= 252;
+    r_bytes[8] &= 252;
+    r_bytes[12] &= 252;
+    let r = u128::from_le_bytes(r_bytes);
+    let s = u128::from_le_bytes(s_bytes);
+    block0.zeroize();
+    r_bytes.zeroize();
+    s_bytes.zeroize();
+
+    let mut key_bytes = [0u8; 32];
+    key_bytes[..16].copy_from_slice(&r.to_le_bytes());
+    key_bytes[16..].copy_from_slice(&s.to_le_bytes());
+    let mut poly = Poly1305::new(Key::from_slice(&key_bytes));
+    key_bytes.zeroize();
+    poly.update_padded(&[]);
+    poly.update_padded(&cipher);
+    let mut len_block = [0u8; 16];
+    len_block[8..].copy_from_slice(&(cipher.len() as u64).to_le_bytes());
+    poly.update(&[Block::clone_from_slice(&len_block)]);
+    let expected = poly.finalize();
+    if !ct_eq(expected.as_slice(), &tag_bytes) {
+        salt.zeroize();
+        nonce.zeroize();
+        cipher.zeroize();
+        return Err(Error::AuthFailure);
+    }
+
+    let mut counter = 1u32;
+    encrypt_decrypt_in_place(&mut cipher, &key, &nonce, &mut counter);
+
+    salt.zeroize();
+    nonce.zeroize();
+
+    Ok(cipher)
+}

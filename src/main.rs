@@ -17,8 +17,8 @@ use zeroize::Zeroize;
 
 use ed25519_dalek::{SigningKey, VerifyingKey, SIGNATURE_LENGTH};
 use encryptor::{
-    chacha20_block, ct_eq, derive_key, encrypt_decrypt_in_place, sign, verify, Argon2Config,
-    HEADER_LEN, MAGIC,
+    chacha20_block, ct_eq, decrypt_priv_key, derive_key, encrypt_decrypt_in_place,
+    encrypt_priv_key, sign, verify, Argon2Config, ENC_KEY_LEN, HEADER_LEN, KEY_MAGIC, MAGIC,
 };
 use poly1305::{
     universal_hash::{KeyInit, UniversalHash},
@@ -60,20 +60,36 @@ fn sha256_file(path: &PathBuf) -> Result<String> {
     Ok(hex::encode(hasher.finalize()))
 }
 
-fn generate_keys(dir: &PathBuf) -> Result<()> {
+fn generate_keys(dir: &PathBuf, password: Option<&str>) -> Result<()> {
     fs::create_dir_all(dir)?;
     let sk = SigningKey::generate(&mut OsRng);
     let pk = sk.verifying_key();
-    let priv_path = dir.join("priv.key");
     let pub_path = dir.join("pub.key");
     let mut sk_bytes = sk.to_bytes();
     let mut pk_bytes = pk.to_bytes();
-    fs::write(&priv_path, &sk_bytes[..])?;
+    if let Some(pw) = password {
+        let cfg = Argon2Config::default();
+        let enc = encrypt_priv_key(&sk_bytes, pw, &cfg)?;
+        let priv_path = dir.join("priv.ekey");
+        fs::write(&priv_path, &enc)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&priv_path, fs::Permissions::from_mode(0o600))?;
+        }
+    } else {
+        let priv_path = dir.join("priv.key");
+        fs::write(&priv_path, &sk_bytes[..])?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&priv_path, fs::Permissions::from_mode(0o600))?;
+        }
+    }
     fs::write(&pub_path, &pk_bytes[..])?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&priv_path, fs::Permissions::from_mode(0o600))?;
         fs::set_permissions(&pub_path, fs::Permissions::from_mode(0o644))?;
     }
     sk_bytes.zeroize();
@@ -95,6 +111,13 @@ struct Cli {
         help = "Generate a new Ed25519 key pair and exit"
     )]
     generate_keys: Option<PathBuf>,
+    #[arg(
+        long,
+        value_name = "KEY_PASSWORD",
+        help = "Password for encrypted private key file",
+        global = true
+    )]
+    key_password: Option<String>,
     #[command(subcommand)]
     command: Option<Command>,
 }
@@ -154,7 +177,7 @@ fn try_main() -> Result<()> {
                 "--generate-keys cannot be combined with other commands",
             ));
         }
-        generate_keys(dir)?;
+        generate_keys(dir, cli.key_password.as_deref())?;
         return Ok(());
     }
     let command = cli.command.ok_or(Error::FormatError("Missing command"))?;
@@ -178,12 +201,25 @@ fn try_main() -> Result<()> {
                 }
             }
             let bytes = fs::read(p)?;
-            if bytes.len() != 32 {
-                return Err(Error::FormatError("Invalid key length"));
+            if bytes.len() == ENC_KEY_LEN && ct_eq(&bytes[..KEY_MAGIC.len()], KEY_MAGIC) {
+                let pw = cli
+                    .key_password
+                    .as_deref()
+                    .ok_or(Error::FormatError("Missing --key-password"))?;
+                let mut seed = decrypt_priv_key(&bytes, pw)?;
+                let key = SigningKey::from_bytes(&seed);
+                seed.zeroize();
+                Some(key)
+            } else {
+                if bytes.len() != 32 {
+                    return Err(Error::FormatError("Invalid key length"));
+                }
+                let mut sk = [0u8; 32];
+                sk.copy_from_slice(&bytes);
+                let key = SigningKey::from_bytes(&sk);
+                sk.zeroize();
+                Some(key)
             }
-            let mut sk = [0u8; 32];
-            sk.copy_from_slice(&bytes);
-            Some(SigningKey::from_bytes(&sk))
         } else {
             None
         }
