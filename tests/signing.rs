@@ -29,10 +29,10 @@ fn sign_verify_roundtrip() {
             "encrypt",
             "tests/data/sample.txt",
             enc.to_str().unwrap(),
-            "pass",
             "--sign-key",
             priv_key.to_str().unwrap(),
         ])
+        .env("FILE_PASSWORD", "pass")
         .status()
         .expect("encrypt");
     assert!(status.success());
@@ -42,10 +42,10 @@ fn sign_verify_roundtrip() {
             "decrypt",
             enc.to_str().unwrap(),
             dec.to_str().unwrap(),
-            "pass",
             "--verify-key",
             pub_key.to_str().unwrap(),
         ])
+        .env("FILE_PASSWORD", "pass")
         .status()
         .expect("decrypt");
     assert!(status.success());
@@ -67,10 +67,10 @@ fn verify_fails_on_bad_signature() {
             "encrypt",
             "tests/data/sample.txt",
             enc.to_str().unwrap(),
-            "pw",
             "--sign-key",
             priv_key.to_str().unwrap(),
         ])
+        .env("FILE_PASSWORD", "pw")
         .status()
         .unwrap();
 
@@ -84,10 +84,10 @@ fn verify_fails_on_bad_signature() {
             "decrypt",
             enc.to_str().unwrap(),
             dec.to_str().unwrap(),
-            "pw",
             "--verify-key",
             pub_key.to_str().unwrap(),
         ])
+        .env("FILE_PASSWORD", "pw")
         .status()
         .unwrap();
     assert!(!status.success());
@@ -101,12 +101,8 @@ fn verify_fails_when_missing_signature() {
     let dec = dir.path().join("dec.txt");
 
     Command::new(BIN)
-        .args([
-            "encrypt",
-            "tests/data/sample.txt",
-            enc.to_str().unwrap(),
-            "pw2",
-        ])
+        .args(["encrypt", "tests/data/sample.txt", enc.to_str().unwrap()])
+        .env("FILE_PASSWORD", "pw2")
         .status()
         .unwrap();
 
@@ -115,10 +111,10 @@ fn verify_fails_when_missing_signature() {
             "decrypt",
             enc.to_str().unwrap(),
             dec.to_str().unwrap(),
-            "pw2",
             "--verify-key",
             pub_key.to_str().unwrap(),
         ])
+        .env("FILE_PASSWORD", "pw2")
         .status()
         .unwrap();
     assert!(!status.success());
@@ -137,10 +133,10 @@ fn warn_on_permissive_sign_key() {
             "encrypt",
             "tests/data/sample.txt",
             enc.to_str().unwrap(),
-            "pw",
             "--sign-key",
             priv_key.to_str().unwrap(),
         ])
+        .env("FILE_PASSWORD", "pw")
         .output()
         .expect("encrypt");
     assert!(output.status.success());

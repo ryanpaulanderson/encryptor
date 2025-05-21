@@ -42,10 +42,10 @@ fn generated_keys_sign_and_verify() {
             "encrypt",
             "tests/data/sample.txt",
             enc.to_str().unwrap(),
-            "pass",
             "--sign-key",
             priv_key.to_str().unwrap(),
         ])
+        .env("FILE_PASSWORD", "pass")
         .status()
         .expect("encrypt");
     assert!(status.success());
@@ -55,10 +55,10 @@ fn generated_keys_sign_and_verify() {
             "decrypt",
             enc.to_str().unwrap(),
             dec.to_str().unwrap(),
-            "pass",
             "--verify-key",
             pub_key.to_str().unwrap(),
         ])
+        .env("FILE_PASSWORD", "pass")
         .status()
         .expect("decrypt");
     assert!(status.success());
@@ -76,8 +76,8 @@ fn encrypted_key_sign_and_verify() {
             "--generate-keys",
             dir.path().to_str().unwrap(),
             "--key-password",
-            "pw",
         ])
+        .env("KEY_PASSWORD", "pw")
         .status()
         .expect("run keygen");
     let priv_key = dir.path().join("priv.ekey");
@@ -92,12 +92,12 @@ fn encrypted_key_sign_and_verify() {
             "encrypt",
             "tests/data/sample.txt",
             enc.to_str().unwrap(),
-            "pw1",
             "--sign-key",
             priv_key.to_str().unwrap(),
             "--key-password",
-            "pw",
         ])
+        .env("FILE_PASSWORD", "pw1")
+        .env("KEY_PASSWORD", "pw")
         .status()
         .expect("encrypt");
     assert!(status.success());
@@ -107,10 +107,10 @@ fn encrypted_key_sign_and_verify() {
             "decrypt",
             enc.to_str().unwrap(),
             dec.to_str().unwrap(),
-            "pw1",
             "--verify-key",
             pub_key.to_str().unwrap(),
         ])
+        .env("FILE_PASSWORD", "pw1")
         .status()
         .expect("decrypt");
     assert!(status.success());
@@ -128,8 +128,8 @@ fn encrypted_key_missing_password_fails() {
             "--generate-keys",
             dir.path().to_str().unwrap(),
             "--key-password",
-            "pw",
         ])
+        .env("KEY_PASSWORD", "pw")
         .status()
         .expect("run keygen");
     let priv_key = dir.path().join("priv.ekey");
@@ -140,10 +140,10 @@ fn encrypted_key_missing_password_fails() {
             "encrypt",
             "tests/data/sample.txt",
             enc.to_str().unwrap(),
-            "pw2",
             "--sign-key",
             priv_key.to_str().unwrap(),
         ])
+        .env("FILE_PASSWORD", "pw2")
         .status()
         .expect("encrypt");
     assert!(!status.success());

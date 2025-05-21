@@ -8,7 +8,9 @@ use clap::{Args, Parser, Subcommand};
 use encryptor::error::{set_verbose, Error, Result};
 use rand_core::{OsRng, RngCore};
 use sha2::{Digest, Sha256};
+use std::env;
 use std::fs::{self, File, OpenOptions};
+use std::io;
 use std::io::{BufReader, BufWriter, Read, Write};
 #[cfg(unix)]
 use std::os::unix::fs::OpenOptionsExt;
@@ -58,6 +60,63 @@ fn sha256_file(path: &PathBuf) -> Result<String> {
         hasher.update(&buf[..n]);
     }
     Ok(hex::encode(hasher.finalize()))
+}
+
+fn prompt_env(prompt: &str, env_var: &str) -> io::Result<String> {
+    if let Ok(val) = env::var(env_var) {
+        return Ok(val);
+    }
+    #[cfg(unix)]
+    {
+        use libc::{tcgetattr, tcsetattr, termios, ECHO, TCSANOW};
+        use std::os::unix::io::AsRawFd;
+        let fd = io::stdin().as_raw_fd();
+        let term = unsafe {
+            let mut t = std::mem::MaybeUninit::<termios>::uninit();
+            if tcgetattr(fd, t.as_mut_ptr()) != 0 {
+                return Err(io::Error::last_os_error());
+            }
+            t.assume_init()
+        };
+        let mut noecho = term;
+        noecho.c_lflag &= !ECHO;
+        unsafe {
+            if tcsetattr(fd, TCSANOW, &noecho) != 0 {
+                return Err(io::Error::last_os_error());
+            }
+        }
+        let mut stdout = io::stdout();
+        stdout.write_all(prompt.as_bytes())?;
+        stdout.flush()?;
+        let mut input = String::new();
+        io::stdin().read_line(&mut input)?;
+        unsafe {
+            tcsetattr(fd, TCSANOW, &term);
+        }
+        stdout.write_all(b"\n")?;
+        if input.ends_with('\n') {
+            input.pop();
+            if input.ends_with('\r') {
+                input.pop();
+            }
+        }
+        Ok(input)
+    }
+    #[cfg(not(unix))]
+    {
+        let mut stdout = io::stdout();
+        stdout.write_all(prompt.as_bytes())?;
+        stdout.flush()?;
+        let mut input = String::new();
+        io::stdin().read_line(&mut input)?;
+        if input.ends_with('\n') {
+            input.pop();
+            if input.ends_with('\r') {
+                input.pop();
+            }
+        }
+        Ok(input)
+    }
 }
 
 fn generate_keys(dir: &PathBuf, password: Option<&str>) -> Result<()> {
@@ -113,11 +172,11 @@ struct Cli {
     generate_keys: Option<PathBuf>,
     #[arg(
         long,
-        value_name = "KEY_PASSWORD",
-        help = "Password for encrypted private key file",
+        help = "Prompt for password when loading or generating encrypted keys",
+        action = clap::ArgAction::SetTrue,
         global = true
     )]
-    key_password: Option<String>,
+    key_password: bool,
     #[command(subcommand)]
     command: Option<Command>,
 }
@@ -134,8 +193,6 @@ struct ModeArgs {
     input_file: PathBuf,
     #[arg(value_name = "OUTPUT", help = "Output file path")]
     output_file: PathBuf,
-    #[arg(value_name = "PASSWORD", help = "Password for KDF")]
-    password: String,
     #[arg(
         long,
         help = "Optional hex-encoded SHA256 hash of the encrypted file to verify before decrypt"
@@ -177,7 +234,16 @@ fn try_main() -> Result<()> {
                 "--generate-keys cannot be combined with other commands",
             ));
         }
-        generate_keys(dir, cli.key_password.as_deref())?;
+        let pw = if cli.key_password {
+            Some(prompt_env("Private key password: ", "KEY_PASSWORD")?)
+        } else {
+            None
+        };
+        let pw_ref = pw.as_deref();
+        generate_keys(dir, pw_ref)?;
+        if let Some(mut p) = pw {
+            p.zeroize();
+        }
         return Ok(());
     }
     let command = cli.command.ok_or(Error::FormatError("Missing command"))?;
@@ -202,13 +268,14 @@ fn try_main() -> Result<()> {
             }
             let bytes = fs::read(p)?;
             if bytes.len() == ENC_KEY_LEN && ct_eq(&bytes[..KEY_MAGIC.len()], KEY_MAGIC) {
-                let pw = cli
-                    .key_password
-                    .as_deref()
-                    .ok_or(Error::FormatError("Missing --key-password"))?;
-                let mut seed = decrypt_priv_key(&bytes, pw)?;
+                if !cli.key_password {
+                    return Err(Error::FormatError("Missing --key-password"));
+                }
+                let mut pw = prompt_env("Private key password: ", "KEY_PASSWORD")?;
+                let mut seed = decrypt_priv_key(&bytes, &pw)?;
                 let key = SigningKey::from_bytes(&seed);
                 seed.zeroize();
+                pw.zeroize();
                 Some(key)
             } else {
                 if bytes.len() != 32 {
@@ -273,6 +340,8 @@ fn try_main() -> Result<()> {
         ));
     }
 
+    let mut password = prompt_env("File password: ", "FILE_PASSWORD")?;
+
     if !decrypting {
         let mut reader = BufReader::new(File::open(&args.input_file)?);
         let mut out_opts = OpenOptions::new();
@@ -295,7 +364,7 @@ fn try_main() -> Result<()> {
         header.extend_from_slice(&[0u8; SIGNATURE_LENGTH]);
         writer.write_all(&header)?;
 
-        let key = derive_key(&args.password, &salt, &cfg)?;
+        let key = derive_key(&password, &salt, &cfg)?;
         let mut block0 = chacha20_block(&key, 0, &nonce);
         let mut r_bytes = [0u8; 16];
         r_bytes.copy_from_slice(&block0[..16]);
@@ -403,7 +472,7 @@ fn try_main() -> Result<()> {
         let mut salt: [u8; 16] = header[8..24].try_into().unwrap();
         let mut nonce: [u8; 12] = header[24..36].try_into().unwrap();
 
-        let key = derive_key(&args.password, &salt, &cfg)?;
+        let key = derive_key(&password, &salt, &cfg)?;
         let mut block0 = chacha20_block(&key, 0, &nonce);
         let mut r_bytes = [0u8; 16];
         r_bytes.copy_from_slice(&block0[..16]);
@@ -486,5 +555,6 @@ fn try_main() -> Result<()> {
         nonce.zeroize();
         salt.zeroize();
     }
+    password.zeroize();
     Ok(())
 }
