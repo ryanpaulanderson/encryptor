@@ -25,8 +25,7 @@ rand_core = { version = "0.6", features = ["std"] }
 proptest = "1.0"
 tempfile = "3.5"
 autocfg = "1.4.0"
-criterion = "0.5" # Changed from "0.6" as 0.5.1 is the latest stable.
-                  # If you specifically need a "0.6" from a fork, adjust as needed.
+criterion = "0.6"
 
 [[bin]]
 name = "chacha20_poly1305"
