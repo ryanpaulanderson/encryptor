@@ -14,19 +14,18 @@ sha2 = "0.10"
 hex = "0.4"
 poly1305 = "0.8.0"
 libc = "0.2"
-secrecy = "0.8"
+secrecy = "0.10"
 rayon = "1.5"
 subtle = "2.4"
 rpassword = "7.4"
 ed25519-dalek = { version = "2", features = ["rand_core"] }
-rand_core = { version = "0.6", features = ["std"] }
+rand_core = { version = "0.9", features = ["std"] }
 
 [dev-dependencies]
 proptest = "1.0"
 tempfile = "3.5"
 autocfg = "1.4.0"
-criterion = "0.5" # Changed from "0.6" as 0.5.1 is the latest stable.
-                  # If you specifically need a "0.6" from a fork, adjust as needed.
+criterion = "0.6"
 
 [[bin]]
 name = "chacha20_poly1305"

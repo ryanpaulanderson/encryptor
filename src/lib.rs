@@ -27,7 +27,7 @@ use argon2::{Algorithm, Argon2, Params, Version};
 #[cfg(unix)]
 use libc::{mlock, munlock};
 use rayon::prelude::*;
-use secrecy::{ExposeSecret, Secret};
+use secrecy::{ExposeSecret, SecretBox};
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
@@ -121,7 +121,11 @@ pub fn unlock(_buf: &[u8]) -> std::io::Result<()> {
 /// let key = derive_key("pw", b"0123456789abcdef", &cfg).unwrap();
 /// assert_eq!(key.expose_secret().len(), 32);
 /// ```
-pub fn derive_key(password: &str, salt: &[u8; 16], cfg: &Argon2Config) -> Result<Secret<[u8; 32]>> {
+pub fn derive_key(
+    password: &str,
+    salt: &[u8; 16],
+    cfg: &Argon2Config,
+) -> Result<SecretBox<[u8; 32]>> {
     let params =
         Params::new(cfg.mem_cost_kib, cfg.time_cost, cfg.parallelism, None).map_err(Error::from)?;
     let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
@@ -131,7 +135,7 @@ pub fn derive_key(password: &str, salt: &[u8; 16], cfg: &Argon2Config) -> Result
         .hash_password_into(password.as_bytes(), salt, &mut key_bytes)
         .map_err(Error::from)?;
     unlock(&key_bytes).map_err(Error::from)?;
-    Ok(Secret::new(key_bytes))
+    Ok(SecretBox::new(Box::new(key_bytes)))
 }
 
 /// Rotate `v` left by `c` bits.
@@ -251,7 +255,7 @@ fn chacha20_block_bytes(key_bytes: &[u8; 32], counter: u32, nonce: &[u8; 12]) ->
 /// let block = chacha20_block(&key, 0, &[0u8; 12]);
 /// assert_eq!(block.len(), 64);
 /// ```
-pub fn chacha20_block(key: &Secret<[u8; 32]>, counter: u32, nonce: &[u8; 12]) -> [u8; 64] {
+pub fn chacha20_block(key: &SecretBox<[u8; 32]>, counter: u32, nonce: &[u8; 12]) -> [u8; 64] {
     chacha20_block_bytes(key.expose_secret(), counter, nonce)
 }
 
@@ -319,7 +323,7 @@ pub fn read_file_ct(path: &Path) -> Result<Vec<u8>> {
 /// let plain = encrypt_decrypt(&cipher, &key, &nonce);
 /// assert_eq!(plain, b"hello");
 /// ```
-pub fn encrypt_decrypt(data: &[u8], key: &Secret<[u8; 32]>, nonce: &[u8; 12]) -> Vec<u8> {
+pub fn encrypt_decrypt(data: &[u8], key: &SecretBox<[u8; 32]>, nonce: &[u8; 12]) -> Vec<u8> {
     let mut out = data.to_vec();
     let mut counter = 1u32;
     encrypt_decrypt_in_place(&mut out, key, nonce, &mut counter);
@@ -347,7 +351,7 @@ pub fn encrypt_decrypt(data: &[u8], key: &Secret<[u8; 32]>, nonce: &[u8; 12]) ->
 /// ```
 pub fn encrypt_decrypt_in_place(
     data: &mut [u8],
-    key: &Secret<[u8; 32]>,
+    key: &SecretBox<[u8; 32]>,
     nonce: &[u8; 12],
     counter: &mut u32,
 ) {
@@ -448,7 +452,7 @@ pub fn encrypt_priv_key(seed: &[u8; 32], password: &str, cfg: &Argon2Config) -> 
         universal_hash::{KeyInit, UniversalHash},
         Block, Key, Poly1305,
     };
-    use rand_core::{OsRng, RngCore};
+    use rand_core::{OsRng, TryRngCore};
 
     let mut salt = [0u8; 16];
     OsRng.try_fill_bytes(&mut salt).unwrap();
