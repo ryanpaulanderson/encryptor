@@ -197,7 +197,10 @@ fn try_main() -> Result<()> {
             if pk_bytes.len() != 32 {
                 return Err(Error::FormatError("Invalid key length"));
             }
-            Some(VerifyingKey::try_from(&pk_bytes[..]).map_err(|_| Error::FormatError("Invalid key"))?)
+            Some(
+                VerifyingKey::try_from(&pk_bytes[..])
+                    .map_err(|_| Error::FormatError("Invalid key"))?,
+            )
         } else {
             None
         }
