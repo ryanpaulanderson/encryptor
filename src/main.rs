@@ -6,7 +6,8 @@
 
 use clap::{Args, Parser, Subcommand};
 use encryptor::error::{set_verbose, Error, Result};
-use rand_core::{OsRng, RngCore};
+use rand_core::{OsRng, TryRngCore};
+use rand_core06::OsRng as OsRng06;
 use rpassword::prompt_password_from_bufread;
 use sha2::{Digest, Sha256};
 use std::fs::{self, File, OpenOptions};
@@ -104,7 +105,7 @@ fn prompt_env(prompt: &str) -> io::Result<String> {
 /// ```
 fn generate_keys(dir: &PathBuf, password: Option<&str>) -> Result<()> {
     fs::create_dir_all(dir)?;
-    let sk = SigningKey::generate(&mut OsRng);
+    let sk = SigningKey::generate(&mut OsRng06);
     let pk = sk.verifying_key();
     let pub_path = dir.join("pub.key");
     let mut sk_bytes = sk.to_bytes();
