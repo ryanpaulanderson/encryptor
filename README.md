@@ -85,8 +85,8 @@ docker run --rm encryptor --help
 ```
 chacha20_poly1305 <encrypt|decrypt> <INPUT> <OUTPUT> \
     [--verify-hash <HEX>] [--mem-size <MiB>] [--iterations <N>] [--parallelism <N>] \
-    [--sign-key <FILE>] [--verify-key <FILE>] [--key-password] [--verbose]
-chacha20_poly1305 --generate-keys <DIR> [--key-password]
+    [--sign-key <FILE>] [--verify-key <FILE>] [--verbose]
+chacha20_poly1305 --generate-keys <DIR>
 ```
 
 Arguments:
@@ -99,12 +99,8 @@ Arguments:
 - `--parallelism` – Argon2 parallelism degree (default: 1).
 - `--sign-key` – path to an Ed25519 private key to sign the encrypted output.
 - `--verify-key` – path to an Ed25519 public key used to verify the signature.
-- `--key-password` – prompt for a password when loading or generating an encrypted
-  private key.
 - `--verbose` – print detailed error messages for debugging.
 - `--generate-keys` – generate a new Ed25519 key pair in the given directory and exit.
-- Passwords can also be supplied using the `FILE_PASSWORD` and
-  `KEY_PASSWORD` environment variables for non-interactive use.
 
 Example encrypt:
 
@@ -129,7 +125,7 @@ Using an encrypted key:
 
 ```bash
 chacha20_poly1305 encrypt plain.txt secret.bin \
-    --sign-key priv.ekey --key-password
+    --sign-key priv.ekey
 ```
 
 Example decrypt verifying the signature:
@@ -145,11 +141,8 @@ Example key generation:
 chacha20_poly1305 --generate-keys mykeys
 ```
 
-With `--key-password` the private key is encrypted and written as `priv.ekey`:
-
-```bash
-chacha20_poly1305 --generate-keys mykeys --key-password
-```
+You will be prompted for a password protecting the private key. Leaving the
+password empty stores the key unencrypted and a warning is printed.
 
 Private keys must be 32-byte raw Ed25519 seeds and the public key is the
 corresponding 32-byte verifying key. When a seed is loaded, the program expands
@@ -165,7 +158,8 @@ chacha20_poly1305 --generate-keys ./keys
 to create `priv.key` and `pub.key` in the specified directory. On Unix systems
 the private key is written with permissions `0o600` so only the owner can read
 or write the file. When loading a signing key, a warning is printed if the file
-is more permissive.
+is more permissive. Using this helper ensures the keys are stored with the
+expected permissions and compatible format.
 
 ## File Format
 
@@ -196,6 +190,13 @@ This tool reads input files using a constant-time routine and performs all tag
 comparisons using constant-time equality checks to reduce timing side channels.
 The Argon2 salt length is fixed at 16 bytes and enforced at compile time to
 avoid accidentally using weaker parameters.
+
+## Why Sign Files?
+
+Signing adds an additional layer of integrity checking. When a signing key is
+provided, the tool embeds an Ed25519 signature over the header, ciphertext and
+authentication tag. Verification with the matching public key allows you to
+detect tampering before decrypting the data.
 
 ## Running Tests
 

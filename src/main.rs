@@ -119,13 +119,6 @@ struct Cli {
         help = "Generate a new Ed25519 key pair and exit"
     )]
     generate_keys: Option<PathBuf>,
-    #[arg(
-        long,
-        help = "Prompt for password when loading or generating encrypted keys",
-        action = clap::ArgAction::SetTrue,
-        global = true
-    )]
-    key_password: bool,
     #[command(subcommand)]
     command: Option<Command>,
 }
@@ -183,16 +176,15 @@ fn try_main() -> Result<()> {
                 "--generate-keys cannot be combined with other commands",
             ));
         }
-        let pw = if cli.key_password {
-            Some(prompt_env("Private key password: ")?)
-        } else {
+        let mut pw = prompt_env("Private key password (leave empty for none): ")?;
+        let pw_ref = if pw.is_empty() {
+            eprintln!("Warning: unencrypted private keys are not recommended");
             None
+        } else {
+            Some(pw.as_str())
         };
-        let pw_ref = pw.as_deref();
         generate_keys(dir, pw_ref)?;
-        if let Some(mut p) = pw {
-            p.zeroize();
-        }
+        pw.zeroize();
         return Ok(());
     }
     let command = cli.command.ok_or(Error::FormatError("Missing command"))?;
@@ -217,9 +209,6 @@ fn try_main() -> Result<()> {
             }
             let bytes = fs::read(p)?;
             if bytes.len() == ENC_KEY_LEN && ct_eq(&bytes[..KEY_MAGIC.len()], KEY_MAGIC) {
-                if !cli.key_password {
-                    return Err(Error::FormatError("Missing --key-password"));
-                }
                 let mut pw = prompt_env("Private key password: ")?;
                 let mut seed = decrypt_priv_key(&bytes, &pw)?;
                 let key = SigningKey::from_bytes(&seed);
