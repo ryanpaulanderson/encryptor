@@ -2,10 +2,10 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use ed25519_dalek::SigningKey;
 use encryptor::{chacha20_block, encrypt_decrypt_in_place, sign, verify, Ed25519PrivKey};
 use rand_core::OsRng;
-use secrecy::Secret;
+use secrecy::SecretBox;
 
 fn bench_chacha20_block(c: &mut Criterion) {
-    let key = Secret::new([0u8; 32]);
+    let key = SecretBox::new(Box::new([0u8; 32]));
     let nonce = [0u8; 12];
     c.bench_function("chacha20_block", |b| {
         b.iter(|| {
@@ -15,7 +15,7 @@ fn bench_chacha20_block(c: &mut Criterion) {
 }
 
 fn bench_encrypt_decrypt_in_place(c: &mut Criterion) {
-    let key = Secret::new([0u8; 32]);
+    let key = SecretBox::new(Box::new([0u8; 32]));
     let nonce = [0u8; 12];
     let data = vec![0u8; 1024];
     c.bench_function("encrypt_decrypt_in_place", |b| {
@@ -40,7 +40,7 @@ fn bench_keypair_generation(c: &mut Criterion) {
 fn bench_encrypt_with_keypair(c: &mut Criterion) {
     let mut rng = OsRng;
     let sk = SigningKey::generate(&mut rng);
-    let key = Secret::new([0u8; 32]);
+    let key = SecretBox::new(Box::new([0u8; 32]));
     let nonce = [0u8; 12];
     let data = vec![0u8; 1024];
     c.bench_function("encrypt_with_keypair", |b| {
@@ -58,7 +58,7 @@ fn bench_decrypt_with_keypair(c: &mut Criterion) {
     let mut rng = OsRng;
     let sk = SigningKey::generate(&mut rng);
     let pk = sk.verifying_key();
-    let key = Secret::new([0u8; 32]);
+    let key = SecretBox::new(Box::new([0u8; 32]));
     let nonce = [0u8; 12];
     let data = vec![0u8; 1024];
     // pre-encrypt and sign so benchmark focuses on verify+decrypt
