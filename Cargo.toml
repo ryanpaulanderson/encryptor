@@ -26,6 +26,10 @@ proptest = "1.0"
 tempfile = "3.5"
 autocfg = "1.4.0"
 criterion = "0.6"
+arbitrary      = "1.4"  # Structured input generation 
+libfuzzer-sys  = "0.4"  # Link against libFuzzer 
+afl            = "0.15"  # AFL instrumentation and macros 
+fuzzcheck      = "0.13"  # Rust-native fuzzing harnesses 
 
 [[bin]]
 name = "chacha20_poly1305"
