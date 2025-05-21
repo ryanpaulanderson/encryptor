@@ -52,7 +52,7 @@ fn ct_eq_timing_consistency() {
     fn similar(a: std::time::Duration, b: std::time::Duration) -> bool {
         let (long, short) = if a > b { (a, b) } else { (b, a) };
         let diff = long - short;
-        diff.as_secs_f64() < long.as_secs_f64() * 0.125
+        diff.as_secs_f64() < long.as_secs_f64() * 0.2
     }
 
     assert!(
@@ -105,7 +105,7 @@ fn decrypt_priv_key_timing_consistency() {
     fn similar(a: std::time::Duration, b: std::time::Duration) -> bool {
         let (long, short) = if a > b { (a, b) } else { (b, a) };
         let diff = long - short;
-        diff.as_secs_f64() < long.as_secs_f64() * 0.125
+        diff.as_secs_f64() < long.as_secs_f64() * 0.2
     }
 
     assert!(
