@@ -27,6 +27,7 @@ tempfile = "3.5"
 autocfg = "1.4.0"
 criterion = "0.5" # Changed from "0.6" as 0.5.1 is the latest stable.
                   # If you specifically need a "0.6" from a fork, adjust as needed.
+audit = "0.17"
 
 [[bin]]
 name = "chacha20_poly1305"
