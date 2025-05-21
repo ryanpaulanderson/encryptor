@@ -255,6 +255,7 @@ fn try_main() -> Result<()> {
         OsRng.try_fill_bytes(&mut nonce).unwrap();
         header.extend_from_slice(&salt);
         header.extend_from_slice(&nonce);
+        header.extend_from_slice(&[0u8; SIG_LEN]);
         writer.write_all(&header)?;
 
         let key = derive_key(&args.password, &salt, &cfg)?;
@@ -283,7 +284,11 @@ fn try_main() -> Result<()> {
         key_bytes.zeroize();
         poly.update_padded(&header);
         let mut sign_buf = if sign_key.is_some() {
-            header.clone()
+            let mut tmp = header.clone();
+            for b in &mut tmp[36..36 + SIG_LEN] {
+                *b = 0;
+            }
+            tmp
         } else {
             Vec::new()
         };
@@ -322,10 +327,16 @@ fn try_main() -> Result<()> {
             sign_buf.extend_from_slice(tag.as_slice());
         }
         if let Some(key) = &sign_key {
+            writer.flush()?;
             let sig = sign(&sign_buf, key);
-            writer.write_all(&sig)?;
+            use std::io::{Seek, SeekFrom};
+            let f = writer.get_mut();
+            f.seek(SeekFrom::Start(36))?;
+            f.write_all(&sig)?;
+            writer.flush()?;
+        } else {
+            writer.flush()?;
         }
-        writer.flush()?;
 
         salt.zeroize();
         nonce.zeroize();
@@ -339,8 +350,7 @@ fn try_main() -> Result<()> {
         }
 
         let file_len = fs::metadata(&args.input_file)?.len() as usize;
-        let sig_len = if verify_key.is_some() { SIG_LEN } else { 0 };
-        if file_len < HEADER_LEN + 16 + sig_len {
+        if file_len < HEADER_LEN + 16 {
             return Err(Error::FormatError("Input too short"));
         }
 
@@ -380,18 +390,22 @@ fn try_main() -> Result<()> {
         key_bytes[16..].copy_from_slice(&s.to_le_bytes());
         let mut poly = Poly1305::new(Key::from_slice(&key_bytes));
         key_bytes.zeroize();
-        poly.update_padded(&header);
 
-        let cipher_len = file_len - HEADER_LEN - 16 - sig_len;
+        let mut header_for_sign = header;
+        for b in &mut header_for_sign[36..36 + SIG_LEN] {
+            *b = 0;
+        }
+        poly.update_padded(&header_for_sign);
+
+        let cipher_len = file_len - HEADER_LEN - 16;
         let mut cipher = vec![0u8; cipher_len];
         reader.read_exact(&mut cipher)?;
         let mut tag_bytes = [0u8; 16];
         reader.read_exact(&mut tag_bytes)?;
         if let Some(key) = &verify_key {
-            let mut sig_bytes = [0u8; SIG_LEN];
-            reader.read_exact(&mut sig_bytes)?;
-            let mut verify_buf = Vec::with_capacity(header.len() + cipher_len + 16);
-            verify_buf.extend_from_slice(&header);
+            let sig_bytes: [u8; SIG_LEN] = header[36..36 + SIG_LEN].try_into().unwrap();
+            let mut verify_buf = Vec::with_capacity(header_for_sign.len() + cipher_len + 16);
+            verify_buf.extend_from_slice(&header_for_sign);
             verify_buf.extend_from_slice(&cipher);
             verify_buf.extend_from_slice(&tag_bytes);
             if !verify(&verify_buf, &sig_bytes, key) {

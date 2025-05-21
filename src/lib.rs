@@ -36,7 +36,10 @@ use zeroize::Zeroize;
 /// File header magic bytes identifying the ChaCha20-Poly1305 format.
 pub const MAGIC: &[u8; 4] = b"CPV1"; // ChaChaPoly AEAD v1
 /// Number of bytes in the file header.
-pub const HEADER_LEN: usize = 36;
+///
+/// The header stores a 64 byte Ed25519 signature in addition to the
+/// previous fields (magic, version, salt and nonce).
+pub const HEADER_LEN: usize = 36 + SIG_LEN;
 
 /// Configuration parameters for [`derive_key`].
 #[derive(Clone, Copy, Debug)]

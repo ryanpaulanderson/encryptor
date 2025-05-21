@@ -74,10 +74,9 @@ fn verify_fails_on_bad_signature() {
         .status()
         .unwrap();
 
-    // flip last byte
+    // flip a byte in the embedded signature
     let mut data = fs::read(&enc).unwrap();
-    let last = data.len() - 1;
-    data[last] ^= 1;
+    data[encryptor::HEADER_LEN - 1] ^= 1;
     fs::write(&enc, data).unwrap();
 
     let status = Command::new(BIN)
