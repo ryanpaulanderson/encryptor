@@ -3,6 +3,12 @@ on:
   push:
     branches:
       - main
+    paths:
+      - '**/Cargo.toml'
+      - '**/Cargo.lock'
+      - 'src/**'
+      - 'tests/**'
+      - 'benches/**'
 
 permissions:
   contents: write
