@@ -125,6 +125,30 @@ fn verify_fails_when_missing_signature() {
     assert!(!status.success());
 }
 
+#[cfg(unix)]
+#[test]
+fn warn_on_permissive_sign_key() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    let (priv_key, _pub_key) = gen_keys(dir.path());
+    fs::set_permissions(&priv_key, fs::Permissions::from_mode(0o644)).unwrap();
+    let enc = dir.path().join("out.bin");
+    let output = Command::new(BIN)
+        .args([
+            "encrypt",
+            "tests/data/sample.txt",
+            enc.to_str().unwrap(),
+            "pw",
+            "--sign-key",
+            priv_key.to_str().unwrap(),
+        ])
+        .output()
+        .expect("encrypt");
+    assert!(output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("Warning"));
+}
+
 proptest! {
     #[test]
     fn prop_sign_verify_roundtrip(data in proptest::collection::vec(any::<u8>(), 0..512)) {

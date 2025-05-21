@@ -15,6 +15,12 @@ fn generate_keys_creates_files() {
     let pub_path = dir.path().join("pub.key");
     assert_eq!(fs::read(&priv_path).unwrap().len(), 32);
     assert_eq!(fs::read(&pub_path).unwrap().len(), 32);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = fs::metadata(&priv_path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600);
+    }
 }
 
 #[test]

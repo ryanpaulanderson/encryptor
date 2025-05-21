@@ -70,6 +70,12 @@ fn generate_keys(dir: &PathBuf) -> Result<()> {
     let mut pk_bytes = pk.to_bytes();
     fs::write(&priv_path, &sk_bytes[..])?;
     fs::write(&pub_path, &pk_bytes[..])?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&priv_path, fs::Permissions::from_mode(0o600))?;
+        fs::set_permissions(&pub_path, fs::Permissions::from_mode(0o644))?;
+    }
     sk_bytes.zeroize();
     pk_bytes.zeroize();
     Ok(())
@@ -159,6 +165,18 @@ fn try_main() -> Result<()> {
 
     let sign_key = if !decrypting {
         if let Some(p) = &args.sign_key {
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let mode = fs::metadata(p)?.permissions().mode() & 0o777;
+                if mode & 0o077 != 0 {
+                    eprintln!(
+                        "Warning: private key file {} permissions {:o} are too permissive (expected 600)",
+                        p.display(),
+                        mode
+                    );
+                }
+            }
             let bytes = fs::read(p)?;
             if bytes.len() != 32 {
                 return Err(Error::FormatError("Invalid key length"));
