@@ -49,7 +49,7 @@ jobs:
 
       - name: Install cargo-audit
         if: steps.cache-audit.outputs.cache-hit != 'true'
-        run: cargo install --locked --version ^0.17 --jobs 4 cargo-audit
+        run: cargo install --locked --version ^0.21 --jobs 4 cargo-audit
 
       - name: Run checks
         run: |
