@@ -2,7 +2,8 @@ use ed25519_dalek::SigningKey;
 use proptest::prelude::*;
 use rand::random;
 use std::fs;
-use std::process::Command;
+use std::io::Write;
+use std::process::{Command, Stdio};
 
 const BIN: &str = env!("CARGO_BIN_EXE_chacha20_poly1305");
 
@@ -24,7 +25,7 @@ fn sign_verify_roundtrip() {
     let enc = dir.path().join("out.bin");
     let dec = dir.path().join("dec.txt");
 
-    let status = Command::new(BIN)
+    let mut enc_cmd = Command::new(BIN)
         .args([
             "encrypt",
             "tests/data/sample.txt",
@@ -32,12 +33,20 @@ fn sign_verify_roundtrip() {
             "--sign-key",
             priv_key.to_str().unwrap(),
         ])
-        .env("FILE_PASSWORD", "pass")
-        .status()
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
         .expect("encrypt");
-    assert!(status.success());
+    enc_cmd
+        .stdin
+        .as_mut()
+        .unwrap()
+        .write_all(b"pass\n")
+        .unwrap();
+    assert!(enc_cmd.wait().expect("enc wait").success());
 
-    let status = Command::new(BIN)
+    let mut dec_cmd = Command::new(BIN)
         .args([
             "decrypt",
             enc.to_str().unwrap(),
@@ -45,10 +54,18 @@ fn sign_verify_roundtrip() {
             "--verify-key",
             pub_key.to_str().unwrap(),
         ])
-        .env("FILE_PASSWORD", "pass")
-        .status()
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
         .expect("decrypt");
-    assert!(status.success());
+    dec_cmd
+        .stdin
+        .as_mut()
+        .unwrap()
+        .write_all(b"pass\n")
+        .unwrap();
+    assert!(dec_cmd.wait().expect("dec wait").success());
     assert_eq!(
         fs::read("tests/data/sample.txt").unwrap(),
         fs::read(dec).unwrap()
@@ -62,7 +79,7 @@ fn verify_fails_on_bad_signature() {
     let enc = dir.path().join("out.bin");
     let dec = dir.path().join("dec.txt");
 
-    Command::new(BIN)
+    let mut enc_cmd = Command::new(BIN)
         .args([
             "encrypt",
             "tests/data/sample.txt",
@@ -70,16 +87,20 @@ fn verify_fails_on_bad_signature() {
             "--sign-key",
             priv_key.to_str().unwrap(),
         ])
-        .env("FILE_PASSWORD", "pw")
-        .status()
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
         .unwrap();
+    enc_cmd.stdin.as_mut().unwrap().write_all(b"pw\n").unwrap();
+    enc_cmd.wait().unwrap();
 
     // flip a byte in the embedded signature
     let mut data = fs::read(&enc).unwrap();
     data[encryptor::HEADER_LEN - 1] ^= 1;
     fs::write(&enc, data).unwrap();
 
-    let status = Command::new(BIN)
+    let mut dec_cmd = Command::new(BIN)
         .args([
             "decrypt",
             enc.to_str().unwrap(),
@@ -87,9 +108,13 @@ fn verify_fails_on_bad_signature() {
             "--verify-key",
             pub_key.to_str().unwrap(),
         ])
-        .env("FILE_PASSWORD", "pw")
-        .status()
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
         .unwrap();
+    dec_cmd.stdin.as_mut().unwrap().write_all(b"pw\n").unwrap();
+    let status = dec_cmd.wait().unwrap();
     assert!(!status.success());
 }
 
@@ -100,13 +125,17 @@ fn verify_fails_when_missing_signature() {
     let enc = dir.path().join("out.bin");
     let dec = dir.path().join("dec.txt");
 
-    Command::new(BIN)
+    let mut enc_cmd = Command::new(BIN)
         .args(["encrypt", "tests/data/sample.txt", enc.to_str().unwrap()])
-        .env("FILE_PASSWORD", "pw2")
-        .status()
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
         .unwrap();
+    enc_cmd.stdin.as_mut().unwrap().write_all(b"pw2\n").unwrap();
+    enc_cmd.wait().unwrap();
 
-    let status = Command::new(BIN)
+    let mut dec_cmd = Command::new(BIN)
         .args([
             "decrypt",
             enc.to_str().unwrap(),
@@ -114,9 +143,13 @@ fn verify_fails_when_missing_signature() {
             "--verify-key",
             pub_key.to_str().unwrap(),
         ])
-        .env("FILE_PASSWORD", "pw2")
-        .status()
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
         .unwrap();
+    dec_cmd.stdin.as_mut().unwrap().write_all(b"pw2\n").unwrap();
+    let status = dec_cmd.wait().unwrap();
     assert!(!status.success());
 }
 
@@ -128,17 +161,23 @@ fn warn_on_permissive_sign_key() {
     let (priv_key, _pub_key) = gen_keys(dir.path());
     fs::set_permissions(&priv_key, fs::Permissions::from_mode(0o644)).unwrap();
     let enc = dir.path().join("out.bin");
-    let output = Command::new(BIN)
-        .args([
-            "encrypt",
-            "tests/data/sample.txt",
-            enc.to_str().unwrap(),
-            "--sign-key",
-            priv_key.to_str().unwrap(),
-        ])
-        .env("FILE_PASSWORD", "pw")
-        .output()
-        .expect("encrypt");
+    let output = {
+        let mut child = Command::new(BIN)
+            .args([
+                "encrypt",
+                "tests/data/sample.txt",
+                enc.to_str().unwrap(),
+                "--sign-key",
+                priv_key.to_str().unwrap(),
+            ])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("encrypt");
+        child.stdin.as_mut().unwrap().write_all(b"pw\n").unwrap();
+        child.wait_with_output().expect("output")
+    };
     assert!(output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("Warning"));

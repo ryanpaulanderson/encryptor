@@ -1,7 +1,8 @@
 use proptest::prelude::*;
 use rand::random;
 use std::fs;
-use std::process::Command;
+use std::io::Write;
+use std::process::{Command, Stdio};
 
 const BIN: &str = env!("CARGO_BIN_EXE_chacha20_poly1305");
 
@@ -11,18 +12,36 @@ fn run_roundtrip(input: &str, password: &str) {
     let mut dec = std::env::temp_dir();
     dec.push(format!("dec-{}.txt", random::<u32>()));
 
-    let status = Command::new(BIN)
+    let mut enc_cmd = Command::new(BIN)
         .args(["encrypt", input, enc.to_str().unwrap()])
-        .env("FILE_PASSWORD", password)
-        .status()
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
         .expect("encrypt run");
+    enc_cmd
+        .stdin
+        .as_mut()
+        .unwrap()
+        .write_all(format!("{}\n", password).as_bytes())
+        .unwrap();
+    let status = enc_cmd.wait().expect("encrypt wait");
     assert!(status.success());
 
-    let status = Command::new(BIN)
+    let mut dec_cmd = Command::new(BIN)
         .args(["decrypt", enc.to_str().unwrap(), dec.to_str().unwrap()])
-        .env("FILE_PASSWORD", password)
-        .status()
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
         .expect("decrypt run");
+    dec_cmd
+        .stdin
+        .as_mut()
+        .unwrap()
+        .write_all(format!("{}\n", password).as_bytes())
+        .unwrap();
+    let status = dec_cmd.wait().expect("decrypt wait");
     assert!(status.success());
 
     let orig = fs::read(input).unwrap();
