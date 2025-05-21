@@ -15,10 +15,10 @@ use std::os::unix::fs::OpenOptionsExt;
 use std::path::PathBuf;
 use zeroize::Zeroize;
 
-use ed25519_dalek::{SigningKey, VerifyingKey};
+use ed25519_dalek::{SigningKey, VerifyingKey, SIGNATURE_LENGTH};
 use encryptor::{
     chacha20_block, ct_eq, derive_key, encrypt_decrypt_in_place, sign, verify, Argon2Config,
-    HEADER_LEN, MAGIC, SIG_LEN,
+    HEADER_LEN, MAGIC,
 };
 use poly1305::{
     universal_hash::{KeyInit, UniversalHash},
@@ -256,7 +256,7 @@ fn try_main() -> Result<()> {
         OsRng.try_fill_bytes(&mut nonce).unwrap();
         header.extend_from_slice(&salt);
         header.extend_from_slice(&nonce);
-        header.extend_from_slice(&[0u8; SIG_LEN]);
+        header.extend_from_slice(&[0u8; SIGNATURE_LENGTH]);
         writer.write_all(&header)?;
 
         let key = derive_key(&args.password, &salt, &cfg)?;
@@ -286,7 +286,7 @@ fn try_main() -> Result<()> {
         poly.update_padded(&header);
         let mut sign_buf = if sign_key.is_some() {
             let mut tmp = header.clone();
-            for b in &mut tmp[36..36 + SIG_LEN] {
+            for b in &mut tmp[36..36 + SIGNATURE_LENGTH] {
                 *b = 0;
             }
             tmp
@@ -393,7 +393,7 @@ fn try_main() -> Result<()> {
         key_bytes.zeroize();
 
         let mut header_for_sign = header;
-        for b in &mut header_for_sign[36..36 + SIG_LEN] {
+        for b in &mut header_for_sign[36..36 + SIGNATURE_LENGTH] {
             *b = 0;
         }
         poly.update_padded(&header_for_sign);
@@ -404,7 +404,8 @@ fn try_main() -> Result<()> {
         let mut tag_bytes = [0u8; 16];
         reader.read_exact(&mut tag_bytes)?;
         if let Some(key) = &verify_key {
-            let sig_bytes: [u8; SIG_LEN] = header[36..36 + SIG_LEN].try_into().unwrap();
+            let sig_bytes: [u8; SIGNATURE_LENGTH] =
+                header[36..36 + SIGNATURE_LENGTH].try_into().unwrap();
             let mut verify_buf = Vec::with_capacity(header_for_sign.len() + cipher_len + 16);
             verify_buf.extend_from_slice(&header_for_sign);
             verify_buf.extend_from_slice(&cipher);
