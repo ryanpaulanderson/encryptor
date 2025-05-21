@@ -141,15 +141,22 @@ Example key generation:
 chacha20_poly1305 --generate-keys mykeys
 ```
 
-You will be prompted for a password protecting the private key. Leaving the
-password empty stores the key unencrypted and a warning is printed.
+We **recommend** generating keys with this command. It creates a new Ed25519
+key pair using the correct format, encrypts the private key when a password is
+supplied and stores the files with secure permissions. You will be prompted for
+a password protecting the private key. Leaving the password empty stores the key
+unencrypted and a warning is printed.
 
 Private keys must be 32-byte raw Ed25519 seeds and the public key is the
 corresponding 32-byte verifying key. When a seed is loaded, the program expands
 it into the full 64 byte keypair internally so both halves are available for
-signing and verification. Keys can be generated using
-`openssl rand -out priv.key 32` and deriving the public key with a tool such as
-[`ed25519-dalek`](https://docs.rs/ed25519-dalek/). Alternatively, run
+signing and verification.
+
+Keys can also be generated manually using `openssl rand -out priv.key 32` and
+deriving the public key with a tool such as
+[`ed25519-dalek`](https://docs.rs/ed25519-dalek/), but using our program is
+preferred because it performs the encryption and sets the permissions
+correctly. Alternatively, run
 
 ```bash
 chacha20_poly1305 --generate-keys ./keys

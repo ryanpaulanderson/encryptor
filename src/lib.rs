@@ -432,6 +432,17 @@ pub const KEY_MAGIC: &[u8; 6] = b"EDEKV1";
 pub const ENC_KEY_LEN: usize = KEY_MAGIC.len() + 4 + 4 + 4 + 16 + 12 + 32 + 16;
 
 /// Encrypt an Ed25519 seed using ChaCha20-Poly1305 with an Argon2 key.
+///
+/// # Examples
+///
+/// ```
+/// use encryptor::{encrypt_priv_key, decrypt_priv_key, Argon2Config};
+/// let seed = [0u8; 32];
+/// let cfg = Argon2Config::default();
+/// let enc = encrypt_priv_key(&seed, "pw", &cfg).unwrap();
+/// let dec = decrypt_priv_key(&enc, "pw").unwrap();
+/// assert_eq!(seed, dec);
+/// ```
 pub fn encrypt_priv_key(seed: &[u8; 32], password: &str, cfg: &Argon2Config) -> Result<Vec<u8>> {
     use poly1305::{
         universal_hash::{KeyInit, UniversalHash},
@@ -497,6 +508,17 @@ pub fn encrypt_priv_key(seed: &[u8; 32], password: &str, cfg: &Argon2Config) -> 
 }
 
 /// Decrypt an encrypted Ed25519 seed.
+///
+/// # Examples
+///
+/// ```
+/// use encryptor::{encrypt_priv_key, decrypt_priv_key, Argon2Config};
+/// let seed = [0u8; 32];
+/// let cfg = Argon2Config::default();
+/// let enc = encrypt_priv_key(&seed, "pw", &cfg).unwrap();
+/// let dec = decrypt_priv_key(&enc, "pw").unwrap();
+/// assert_eq!(seed, dec);
+/// ```
 pub fn decrypt_priv_key(data: &[u8], password: &str) -> Result<[u8; 32]> {
     use poly1305::{
         universal_hash::{KeyInit, UniversalHash},

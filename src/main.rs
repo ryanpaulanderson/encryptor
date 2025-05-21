@@ -27,6 +27,17 @@ use poly1305::{
     Block, Key, Poly1305,
 };
 
+/// Update a Poly1305 instance with `data`, buffering incomplete blocks.
+///
+/// # Examples
+///
+/// ```ignore
+/// use poly1305::{Poly1305, universal_hash::KeyInit};
+/// use poly1305::Key;
+/// let mut poly = Poly1305::new(Key::from_slice(&[0u8; 32]));
+/// let mut leftover = Vec::new();
+/// poly_update_stream(&mut poly, b"data", &mut leftover);
+/// ```
 fn poly_update_stream(poly: &mut Poly1305, mut data: &[u8], leftover: &mut Vec<u8>) {
     if !leftover.is_empty() {
         let need = 16 - leftover.len();
@@ -48,6 +59,14 @@ fn poly_update_stream(poly: &mut Poly1305, mut data: &[u8], leftover: &mut Vec<u
     }
 }
 
+/// Compute the hexadecimal SHA256 hash of the file at `path`.
+///
+/// # Examples
+///
+/// ```ignore
+/// let hash = sha256_file(&std::path::PathBuf::from("Cargo.toml")).unwrap();
+/// assert_eq!(hash.len(), 64);
+/// ```
 fn sha256_file(path: &PathBuf) -> Result<String> {
     let mut hasher = Sha256::new();
     let mut file = BufReader::new(File::open(path)?);
@@ -62,12 +81,27 @@ fn sha256_file(path: &PathBuf) -> Result<String> {
     Ok(hex::encode(hasher.finalize()))
 }
 
+/// Prompt the user for a password using `rpassword`.
+///
+/// # Examples
+///
+/// ```ignore
+/// let pw = prompt_env("Password: ").unwrap();
+/// println!("{}", pw.len());
+/// ```
 fn prompt_env(prompt: &str) -> io::Result<String> {
     let mut input = io::stdin().lock();
     let mut output = io::stdout();
     prompt_password_from_bufread(&mut input, &mut output, prompt)
 }
 
+/// Generate an Ed25519 key pair in `dir` optionally encrypting the private key.
+///
+/// # Examples
+///
+/// ```no_run
+/// generate_keys(&std::path::PathBuf::from("keys"), Some("pw")).unwrap();
+/// ```
 fn generate_keys(dir: &PathBuf, password: Option<&str>) -> Result<()> {
     fs::create_dir_all(dir)?;
     let sk = SigningKey::generate(&mut OsRng);
@@ -160,6 +194,13 @@ struct ModeArgs {
     verify_key: Option<PathBuf>,
 }
 
+/// Entry point that prints errors to stderr.
+///
+/// # Examples
+///
+/// ```ignore
+/// main();
+/// ```
 fn main() {
     if let Err(e) = try_main() {
         eprintln!("{}", e);
@@ -167,6 +208,15 @@ fn main() {
     }
 }
 
+/// Execute the command line interface logic.
+///
+/// # Examples
+///
+/// ```ignore
+/// if let Err(e) = try_main() {
+///     eprintln!("{e}");
+/// }
+/// ```
 fn try_main() -> Result<()> {
     let cli = Cli::parse();
     set_verbose(cli.verbose);
