@@ -1,8 +1,9 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use ed25519_dalek::SigningKey;
+use ed25519_dalek::{SigningKey, SECRET_KEY_LENGTH};
 use encryptor::{chacha20_block, encrypt_decrypt_in_place, sign, verify, Ed25519PrivKey};
-use rand_core::OsRng;
+use rand_core::{OsRng, TryRngCore};
 use secrecy::SecretBox;
+use zeroize::Zeroize;
 
 fn bench_chacha20_block(c: &mut Criterion) {
     let key = SecretBox::new(Box::new([0u8; 32]));
@@ -31,15 +32,21 @@ fn bench_encrypt_decrypt_in_place(c: &mut Criterion) {
 fn bench_keypair_generation(c: &mut Criterion) {
     c.bench_function("keypair_generation", |b| {
         b.iter(|| {
-            let key: Ed25519PrivKey = SigningKey::generate(&mut OsRng);
-            black_box(key);
+            let mut buf = [0u8; SECRET_KEY_LENGTH];
+            OsRng.try_fill_bytes(&mut buf).unwrap();
+            let key: Ed25519PrivKey = SigningKey::from_bytes(&buf);
+            black_box(&key);
+            buf.zeroize();
         });
     });
 }
 
 fn bench_encrypt_with_keypair(c: &mut Criterion) {
     let mut rng = OsRng;
-    let sk = SigningKey::generate(&mut rng);
+    let mut buf = [0u8; SECRET_KEY_LENGTH];
+    rng.try_fill_bytes(&mut buf).unwrap();
+    let sk = SigningKey::from_bytes(&buf);
+    buf.zeroize();
     let key = SecretBox::new(Box::new([0u8; 32]));
     let nonce = [0u8; 12];
     let data = vec![0u8; 1024];
@@ -56,7 +63,10 @@ fn bench_encrypt_with_keypair(c: &mut Criterion) {
 
 fn bench_decrypt_with_keypair(c: &mut Criterion) {
     let mut rng = OsRng;
-    let sk = SigningKey::generate(&mut rng);
+    let mut buf = [0u8; SECRET_KEY_LENGTH];
+    rng.try_fill_bytes(&mut buf).unwrap();
+    let sk = SigningKey::from_bytes(&buf);
+    buf.zeroize();
     let pk = sk.verifying_key();
     let key = SecretBox::new(Box::new([0u8; 32]));
     let nonce = [0u8; 12];
