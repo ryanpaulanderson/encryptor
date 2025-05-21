@@ -3,6 +3,15 @@ name: Publish Docs
 on:
   push:
     branches: [main]
+    paths:
+      - '**/Cargo.toml'
+      - '**/Cargo.lock'
+      - 'src/**'
+      - 'tests/**'
+      - 'README.md'
+      - 'CHANGELOG.md'
+      - 'SECURITY.md'
+      - 'docs/**'
 
 permissions:
   contents: write
