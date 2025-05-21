@@ -8,6 +8,7 @@ on:
       - 'src/**'
       - 'tests/**'
       - 'benches/**'
+      - '.github/workflows/ci.yml'
   push:
     branches: [main]
     paths:
@@ -16,6 +17,7 @@ on:
       - 'src/**'
       - 'tests/**'
       - 'benches/**'
+      - '.github/workflows/ci.yml'
 
 permissions:
   contents: read        # still allow checking out code
