@@ -6,7 +6,7 @@
 
 use clap::{Args, Parser, Subcommand};
 use encryptor::error::{set_verbose, Error, Result};
-use rand_core::{OsRng, RngCore};
+use rand_core::{OsRng, TryRngCore};
 use rpassword::prompt_password_from_bufread;
 use sha2::{Digest, Sha256};
 use std::fs::{self, File, OpenOptions};
@@ -17,7 +17,7 @@ use std::os::unix::fs::OpenOptionsExt;
 use std::path::PathBuf;
 use zeroize::Zeroize;
 
-use ed25519_dalek::{SigningKey, VerifyingKey, SIGNATURE_LENGTH};
+use ed25519_dalek::{SigningKey, VerifyingKey, SECRET_KEY_LENGTH, SIGNATURE_LENGTH};
 use encryptor::{
     chacha20_block, ct_eq, decrypt_priv_key, derive_key, encrypt_decrypt_in_place,
     encrypt_priv_key, sign, verify, Argon2Config, ENC_KEY_LEN, HEADER_LEN, KEY_MAGIC, MAGIC,
@@ -104,7 +104,10 @@ fn prompt_env(prompt: &str) -> io::Result<String> {
 /// ```
 fn generate_keys(dir: &PathBuf, password: Option<&str>) -> Result<()> {
     fs::create_dir_all(dir)?;
-    let sk = SigningKey::generate(&mut OsRng);
+    let mut secret = [0u8; SECRET_KEY_LENGTH];
+    OsRng.try_fill_bytes(&mut secret).unwrap();
+    let sk = SigningKey::from_bytes(&secret);
+    secret.zeroize();
     let pk = sk.verifying_key();
     let pub_path = dir.join("pub.key");
     let mut sk_bytes = sk.to_bytes();
