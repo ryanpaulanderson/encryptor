@@ -161,9 +161,11 @@ Files created by `chacha20_poly1305` start with a fixed size header:
 4. 16 byte Argon2 salt.
 5. 12 byte ChaCha20 nonce.
 
-The ciphertext is written next followed by a 16 byte Poly1305 tag.  When a
-signing key is supplied the final 64 bytes contain an Ed25519 signature over the
-header, ciphertext and tag.
+6. 64 byte Ed25519 signature (all zeros when the file is not signed).
+
+The ciphertext is written next followed by a 16 byte Poly1305 tag.  The
+signature covers the header with the signature field zeroed, the ciphertext and
+the tag.
 
 ### Error Handling
 
