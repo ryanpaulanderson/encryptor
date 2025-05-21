@@ -39,7 +39,7 @@ pub const MAGIC: &[u8; 4] = b"CPV1"; // ChaChaPoly AEAD v1
 ///
 /// The header stores a 64 byte Ed25519 signature in addition to the
 /// previous fields (magic, version, salt and nonce).
-pub const HEADER_LEN: usize = 36 + SIG_LEN;
+pub const HEADER_LEN: usize = 36 + ed25519_dalek::SIGNATURE_LENGTH;
 
 /// Configuration parameters for [`derive_key`].
 #[derive(Clone, Copy, Debug)]
@@ -373,6 +373,8 @@ pub type Ed25519PrivKey = SigningKey;
 pub type Ed25519PubKey = VerifyingKey;
 
 /// Length in bytes of an Ed25519 signature produced by [`sign`].
+///
+/// This is equivalent to [`ed25519_dalek::SIGNATURE_LENGTH`].
 pub const SIG_LEN: usize = ed25519_dalek::SIGNATURE_LENGTH;
 
 /// Sign `data` with `key` and return the detached signature bytes.
