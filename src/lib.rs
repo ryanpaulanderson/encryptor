@@ -452,7 +452,7 @@ pub fn encrypt_priv_key(seed: &[u8; 32], password: &str, cfg: &Argon2Config) -> 
         universal_hash::{KeyInit, UniversalHash},
         Block, Key, Poly1305,
     };
-    use rand_core::{OsRng, RngCore};
+    use rand_core::{OsRng, TryRngCore};
 
     let mut salt = [0u8; 16];
     OsRng.try_fill_bytes(&mut salt).unwrap();
