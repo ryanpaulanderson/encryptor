@@ -83,58 +83,59 @@ docker run --rm encryptor --help
 ## Usage
 
 ```
-chacha20_poly1305 <encrypt|decrypt> <INPUT> <OUTPUT> <PASSWORD> \
+chacha20_poly1305 <encrypt|decrypt> <INPUT> <OUTPUT> \
     [--verify-hash <HEX>] [--mem-size <MiB>] [--iterations <N>] [--parallelism <N>] \
-    [--sign-key <FILE>] [--verify-key <FILE>] [--verbose]
-chacha20_poly1305 --generate-keys <DIR>
+    [--sign-key <FILE>] [--verify-key <FILE>] [--key-password] [--verbose]
+chacha20_poly1305 --generate-keys <DIR> [--key-password]
 ```
 
 Arguments:
 
 - `INPUT` – path to the file to read.
 - `OUTPUT` – path of the file to write.
-- `PASSWORD` – password used for the Argon2 key derivation.
 - `--verify-hash` – optional hex-encoded SHA256 hash of the encrypted file to verify before decryption.
 - `--mem-size` – Argon2 memory usage in MiB (default: 64).
 - `--iterations` – Argon2 iterations/passes (default: 4).
 - `--parallelism` – Argon2 parallelism degree (default: 1).
 - `--sign-key` – path to an Ed25519 private key to sign the encrypted output.
 - `--verify-key` – path to an Ed25519 public key used to verify the signature.
-- `--key-password` – password used when loading or generating an encrypted
+- `--key-password` – prompt for a password when loading or generating an encrypted
   private key.
 - `--verbose` – print detailed error messages for debugging.
 - `--generate-keys` – generate a new Ed25519 key pair in the given directory and exit.
+- Passwords can also be supplied using the `FILE_PASSWORD` and
+  `KEY_PASSWORD` environment variables for non-interactive use.
 
 Example encrypt:
 
 ```bash
-chacha20_poly1305 encrypt plain.txt secret.bin mypassword
+chacha20_poly1305 encrypt plain.txt secret.bin
 ```
 
 Example decrypt with integrity check:
 
 ```bash
-chacha20_poly1305 decrypt secret.bin plain.txt mypassword --verify-hash <hash>
+chacha20_poly1305 decrypt secret.bin plain.txt --verify-hash <hash>
 ```
 
 Example encrypt with a signature:
 
 ```bash
-chacha20_poly1305 encrypt plain.txt secret.bin mypassword \
+chacha20_poly1305 encrypt plain.txt secret.bin \
     --sign-key priv.key
 ```
 
 Using an encrypted key:
 
 ```bash
-chacha20_poly1305 encrypt plain.txt secret.bin mypassword \
-    --sign-key priv.ekey --key-password secret
+chacha20_poly1305 encrypt plain.txt secret.bin \
+    --sign-key priv.ekey --key-password
 ```
 
 Example decrypt verifying the signature:
 
 ```bash
-chacha20_poly1305 decrypt secret.bin plain.txt mypassword \
+chacha20_poly1305 decrypt secret.bin plain.txt \
     --verify-key pub.key
 ```
 
@@ -147,7 +148,7 @@ chacha20_poly1305 --generate-keys mykeys
 With `--key-password` the private key is encrypted and written as `priv.ekey`:
 
 ```bash
-chacha20_poly1305 --generate-keys mykeys --key-password secret
+chacha20_poly1305 --generate-keys mykeys --key-password
 ```
 
 Private keys must be 32-byte raw Ed25519 seeds and the public key is the

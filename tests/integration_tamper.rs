@@ -10,7 +10,8 @@ fn encrypt_file(input: &str, password: &str) -> std::path::PathBuf {
     let mut out = std::env::temp_dir();
     out.push(format!("enc-{}-{}.bin", password, random::<u32>()));
     let status = Command::new(BIN)
-        .args(["encrypt", input, out.to_str().unwrap(), password])
+        .args(["encrypt", input, out.to_str().unwrap()])
+        .env("FILE_PASSWORD", password)
         .status()
         .expect("run encrypt");
     assert!(status.success());
@@ -24,7 +25,8 @@ fn decrypt_file(
     verify: Option<&str>,
 ) -> std::process::ExitStatus {
     let mut cmd = Command::new(BIN);
-    cmd.arg("decrypt").arg(input).arg(output).arg(password);
+    cmd.arg("decrypt").arg(input).arg(output);
+    cmd.env("FILE_PASSWORD", password);
     if let Some(v) = verify {
         cmd.arg("--verify-hash").arg(v);
     }

@@ -12,18 +12,15 @@ fn run_roundtrip(input: &str, password: &str) {
     dec.push(format!("dec-{}.txt", random::<u32>()));
 
     let status = Command::new(BIN)
-        .args(["encrypt", input, enc.to_str().unwrap(), password])
+        .args(["encrypt", input, enc.to_str().unwrap()])
+        .env("FILE_PASSWORD", password)
         .status()
         .expect("encrypt run");
     assert!(status.success());
 
     let status = Command::new(BIN)
-        .args([
-            "decrypt",
-            enc.to_str().unwrap(),
-            dec.to_str().unwrap(),
-            password,
-        ])
+        .args(["decrypt", enc.to_str().unwrap(), dec.to_str().unwrap()])
+        .env("FILE_PASSWORD", password)
         .status()
         .expect("decrypt run");
     assert!(status.success());
