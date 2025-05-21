@@ -9,11 +9,15 @@ const BIN: &str = env!("CARGO_BIN_EXE_chacha20_poly1305");
 #[test]
 fn generate_keys_creates_files() {
     let dir = tempfile::tempdir().unwrap();
-    let status = Command::new(BIN)
+    let mut child = Command::new(BIN)
         .args(["--generate-keys", dir.path().to_str().unwrap()])
-        .status()
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
         .expect("run keygen");
-    assert!(status.success());
+    child.stdin.as_mut().unwrap().write_all(b"\n").unwrap();
+    assert!(child.wait().expect("keygen wait").success());
     let priv_path = dir.path().join("priv.key");
     let pub_path = dir.path().join("pub.key");
     assert_eq!(fs::read(&priv_path).unwrap().len(), 32);
@@ -29,10 +33,15 @@ fn generate_keys_creates_files() {
 #[test]
 fn generated_keys_sign_and_verify() {
     let dir = tempfile::tempdir().unwrap();
-    Command::new(BIN)
+    let mut gen = Command::new(BIN)
         .args(["--generate-keys", dir.path().to_str().unwrap()])
-        .status()
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
         .expect("run keygen");
+    gen.stdin.as_mut().unwrap().write_all(b"\n").unwrap();
+    assert!(gen.wait().expect("keygen wait").success());
     let priv_key = dir.path().join("priv.key");
     let pub_key = dir.path().join("pub.key");
     let enc = dir.path().join("out.bin");
@@ -89,11 +98,7 @@ fn generated_keys_sign_and_verify() {
 fn encrypted_key_sign_and_verify() {
     let dir = tempfile::tempdir().unwrap();
     let mut child = Command::new(BIN)
-        .args([
-            "--generate-keys",
-            dir.path().to_str().unwrap(),
-            "--key-password",
-        ])
+        .args(["--generate-keys", dir.path().to_str().unwrap()])
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -115,7 +120,6 @@ fn encrypted_key_sign_and_verify() {
             enc.to_str().unwrap(),
             "--sign-key",
             priv_key.to_str().unwrap(),
-            "--key-password",
         ])
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
@@ -155,11 +159,7 @@ fn encrypted_key_sign_and_verify() {
 fn encrypted_key_missing_password_fails() {
     let dir = tempfile::tempdir().unwrap();
     let mut gen = Command::new(BIN)
-        .args([
-            "--generate-keys",
-            dir.path().to_str().unwrap(),
-            "--key-password",
-        ])
+        .args(["--generate-keys", dir.path().to_str().unwrap()])
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -183,6 +183,6 @@ fn encrypted_key_missing_password_fails() {
         .stderr(Stdio::null())
         .spawn()
         .expect("encrypt");
-    enc_cmd.stdin.as_mut().unwrap().write_all(b"pw2\n").unwrap();
+    enc_cmd.stdin.as_mut().unwrap().write_all(b"\n").unwrap();
     assert!(!enc_cmd.wait().expect("enc wait").success());
 }
