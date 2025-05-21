@@ -2,18 +2,28 @@ use proptest::prelude::*;
 use rand::random;
 use sha2::{Digest, Sha256};
 use std::fs;
-use std::process::Command;
+use std::io::Write;
+use std::process::{Command, Stdio};
 
 const BIN: &str = env!("CARGO_BIN_EXE_chacha20_poly1305");
 
 fn encrypt_file(input: &str, password: &str) -> std::path::PathBuf {
     let mut out = std::env::temp_dir();
     out.push(format!("enc-{}-{}.bin", password, random::<u32>()));
-    let status = Command::new(BIN)
+    let mut child = Command::new(BIN)
         .args(["encrypt", input, out.to_str().unwrap()])
-        .env("FILE_PASSWORD", password)
-        .status()
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
         .expect("run encrypt");
+    child
+        .stdin
+        .as_mut()
+        .unwrap()
+        .write_all(format!("{}\n", password).as_bytes())
+        .unwrap();
+    let status = child.wait().expect("wait encrypt");
     assert!(status.success());
     out
 }
@@ -26,11 +36,20 @@ fn decrypt_file(
 ) -> std::process::ExitStatus {
     let mut cmd = Command::new(BIN);
     cmd.arg("decrypt").arg(input).arg(output);
-    cmd.env("FILE_PASSWORD", password);
     if let Some(v) = verify {
         cmd.arg("--verify-hash").arg(v);
     }
-    cmd.status().expect("run decrypt")
+    cmd.stdin(Stdio::piped());
+    cmd.stdout(Stdio::null());
+    cmd.stderr(Stdio::null());
+    let mut child = cmd.spawn().expect("run decrypt");
+    child
+        .stdin
+        .as_mut()
+        .unwrap()
+        .write_all(format!("{}\n", password).as_bytes())
+        .unwrap();
+    child.wait().expect("wait decrypt")
 }
 
 #[test]

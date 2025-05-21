@@ -1,5 +1,6 @@
 use std::fs;
-use std::process::Command;
+use std::io::Write;
+use std::process::{Command, Stdio};
 
 use encryptor::ENC_KEY_LEN;
 
@@ -37,7 +38,7 @@ fn generated_keys_sign_and_verify() {
     let enc = dir.path().join("out.bin");
     let dec = dir.path().join("out.txt");
 
-    let status = Command::new(BIN)
+    let mut enc_cmd = Command::new(BIN)
         .args([
             "encrypt",
             "tests/data/sample.txt",
@@ -45,12 +46,20 @@ fn generated_keys_sign_and_verify() {
             "--sign-key",
             priv_key.to_str().unwrap(),
         ])
-        .env("FILE_PASSWORD", "pass")
-        .status()
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
         .expect("encrypt");
-    assert!(status.success());
+    enc_cmd
+        .stdin
+        .as_mut()
+        .unwrap()
+        .write_all(b"pass\n")
+        .unwrap();
+    assert!(enc_cmd.wait().expect("enc wait").success());
 
-    let status = Command::new(BIN)
+    let mut dec_cmd = Command::new(BIN)
         .args([
             "decrypt",
             enc.to_str().unwrap(),
@@ -58,10 +67,18 @@ fn generated_keys_sign_and_verify() {
             "--verify-key",
             pub_key.to_str().unwrap(),
         ])
-        .env("FILE_PASSWORD", "pass")
-        .status()
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
         .expect("decrypt");
-    assert!(status.success());
+    dec_cmd
+        .stdin
+        .as_mut()
+        .unwrap()
+        .write_all(b"pass\n")
+        .unwrap();
+    assert!(dec_cmd.wait().expect("dec wait").success());
     assert_eq!(
         fs::read("tests/data/sample.txt").unwrap(),
         fs::read(dec).unwrap()
@@ -71,15 +88,19 @@ fn generated_keys_sign_and_verify() {
 #[test]
 fn encrypted_key_sign_and_verify() {
     let dir = tempfile::tempdir().unwrap();
-    Command::new(BIN)
+    let mut child = Command::new(BIN)
         .args([
             "--generate-keys",
             dir.path().to_str().unwrap(),
             "--key-password",
         ])
-        .env("KEY_PASSWORD", "pw")
-        .status()
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
         .expect("run keygen");
+    child.stdin.as_mut().unwrap().write_all(b"pw\n").unwrap();
+    assert!(child.wait().expect("keygen wait").success());
     let priv_key = dir.path().join("priv.ekey");
     let pub_key = dir.path().join("pub.key");
     assert_eq!(fs::read(&priv_key).unwrap().len(), ENC_KEY_LEN);
@@ -87,7 +108,7 @@ fn encrypted_key_sign_and_verify() {
     let enc = dir.path().join("out.bin");
     let dec = dir.path().join("out.txt");
 
-    let status = Command::new(BIN)
+    let mut enc_cmd = Command::new(BIN)
         .args([
             "encrypt",
             "tests/data/sample.txt",
@@ -96,13 +117,20 @@ fn encrypted_key_sign_and_verify() {
             priv_key.to_str().unwrap(),
             "--key-password",
         ])
-        .env("FILE_PASSWORD", "pw1")
-        .env("KEY_PASSWORD", "pw")
-        .status()
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
         .expect("encrypt");
-    assert!(status.success());
+    enc_cmd
+        .stdin
+        .as_mut()
+        .unwrap()
+        .write_all(b"pw\npw1\n")
+        .unwrap();
+    assert!(enc_cmd.wait().expect("enc wait").success());
 
-    let status = Command::new(BIN)
+    let mut dec_cmd = Command::new(BIN)
         .args([
             "decrypt",
             enc.to_str().unwrap(),
@@ -110,10 +138,13 @@ fn encrypted_key_sign_and_verify() {
             "--verify-key",
             pub_key.to_str().unwrap(),
         ])
-        .env("FILE_PASSWORD", "pw1")
-        .status()
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
         .expect("decrypt");
-    assert!(status.success());
+    dec_cmd.stdin.as_mut().unwrap().write_all(b"pw1\n").unwrap();
+    assert!(dec_cmd.wait().expect("dec wait").success());
     assert_eq!(
         fs::read("tests/data/sample.txt").unwrap(),
         fs::read(dec).unwrap()
@@ -123,19 +154,23 @@ fn encrypted_key_sign_and_verify() {
 #[test]
 fn encrypted_key_missing_password_fails() {
     let dir = tempfile::tempdir().unwrap();
-    Command::new(BIN)
+    let mut gen = Command::new(BIN)
         .args([
             "--generate-keys",
             dir.path().to_str().unwrap(),
             "--key-password",
         ])
-        .env("KEY_PASSWORD", "pw")
-        .status()
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
         .expect("run keygen");
+    gen.stdin.as_mut().unwrap().write_all(b"pw\n").unwrap();
+    assert!(gen.wait().expect("wait keygen").success());
     let priv_key = dir.path().join("priv.ekey");
     let enc = dir.path().join("out.bin");
 
-    let status = Command::new(BIN)
+    let mut enc_cmd = Command::new(BIN)
         .args([
             "encrypt",
             "tests/data/sample.txt",
@@ -143,8 +178,11 @@ fn encrypted_key_missing_password_fails() {
             "--sign-key",
             priv_key.to_str().unwrap(),
         ])
-        .env("FILE_PASSWORD", "pw2")
-        .status()
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
         .expect("encrypt");
-    assert!(!status.success());
+    enc_cmd.stdin.as_mut().unwrap().write_all(b"pw2\n").unwrap();
+    assert!(!enc_cmd.wait().expect("enc wait").success());
 }

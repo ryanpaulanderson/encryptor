@@ -7,8 +7,8 @@
 use clap::{Args, Parser, Subcommand};
 use encryptor::error::{set_verbose, Error, Result};
 use rand_core::{OsRng, RngCore};
+use rpassword::prompt_password_from_bufread;
 use sha2::{Digest, Sha256};
-use std::env;
 use std::fs::{self, File, OpenOptions};
 use std::io;
 use std::io::{BufReader, BufWriter, Read, Write};
@@ -62,61 +62,10 @@ fn sha256_file(path: &PathBuf) -> Result<String> {
     Ok(hex::encode(hasher.finalize()))
 }
 
-fn prompt_env(prompt: &str, env_var: &str) -> io::Result<String> {
-    if let Ok(val) = env::var(env_var) {
-        return Ok(val);
-    }
-    #[cfg(unix)]
-    {
-        use libc::{tcgetattr, tcsetattr, termios, ECHO, TCSANOW};
-        use std::os::unix::io::AsRawFd;
-        let fd = io::stdin().as_raw_fd();
-        let term = unsafe {
-            let mut t = std::mem::MaybeUninit::<termios>::uninit();
-            if tcgetattr(fd, t.as_mut_ptr()) != 0 {
-                return Err(io::Error::last_os_error());
-            }
-            t.assume_init()
-        };
-        let mut noecho = term;
-        noecho.c_lflag &= !ECHO;
-        unsafe {
-            if tcsetattr(fd, TCSANOW, &noecho) != 0 {
-                return Err(io::Error::last_os_error());
-            }
-        }
-        let mut stdout = io::stdout();
-        stdout.write_all(prompt.as_bytes())?;
-        stdout.flush()?;
-        let mut input = String::new();
-        io::stdin().read_line(&mut input)?;
-        unsafe {
-            tcsetattr(fd, TCSANOW, &term);
-        }
-        stdout.write_all(b"\n")?;
-        if input.ends_with('\n') {
-            input.pop();
-            if input.ends_with('\r') {
-                input.pop();
-            }
-        }
-        Ok(input)
-    }
-    #[cfg(not(unix))]
-    {
-        let mut stdout = io::stdout();
-        stdout.write_all(prompt.as_bytes())?;
-        stdout.flush()?;
-        let mut input = String::new();
-        io::stdin().read_line(&mut input)?;
-        if input.ends_with('\n') {
-            input.pop();
-            if input.ends_with('\r') {
-                input.pop();
-            }
-        }
-        Ok(input)
-    }
+fn prompt_env(prompt: &str) -> io::Result<String> {
+    let mut input = io::stdin().lock();
+    let mut output = io::stdout();
+    prompt_password_from_bufread(&mut input, &mut output, prompt)
 }
 
 fn generate_keys(dir: &PathBuf, password: Option<&str>) -> Result<()> {
@@ -235,7 +184,7 @@ fn try_main() -> Result<()> {
             ));
         }
         let pw = if cli.key_password {
-            Some(prompt_env("Private key password: ", "KEY_PASSWORD")?)
+            Some(prompt_env("Private key password: ")?)
         } else {
             None
         };
@@ -271,7 +220,7 @@ fn try_main() -> Result<()> {
                 if !cli.key_password {
                     return Err(Error::FormatError("Missing --key-password"));
                 }
-                let mut pw = prompt_env("Private key password: ", "KEY_PASSWORD")?;
+                let mut pw = prompt_env("Private key password: ")?;
                 let mut seed = decrypt_priv_key(&bytes, &pw)?;
                 let key = SigningKey::from_bytes(&seed);
                 seed.zeroize();
@@ -340,7 +289,7 @@ fn try_main() -> Result<()> {
         ));
     }
 
-    let mut password = prompt_env("File password: ", "FILE_PASSWORD")?;
+    let mut password = prompt_env("File password: ")?;
 
     if !decrypting {
         let mut reader = BufReader::new(File::open(&args.input_file)?);
