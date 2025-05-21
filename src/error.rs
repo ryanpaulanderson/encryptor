@@ -7,6 +7,12 @@ static VERBOSE: AtomicBool = AtomicBool::new(false);
 
 /// Enable or disable verbose error output for conversions from `std::io::Error`
 /// and `argon2::Error`.
+///
+/// # Examples
+///
+/// ```
+/// encryptor::error::set_verbose(true);
+/// ```
 pub fn set_verbose(val: bool) {
     VERBOSE.store(val, Ordering::Relaxed);
 }
