@@ -1,7 +1,5 @@
 use arbitrary::{Arbitrary, Unstructured};
 use encryptor::{Argon2Config, derive_key, encrypt_decrypt, encrypt_decrypt_in_place};
-use libfuzzer_sys::fuzz_target;
-#[cfg(feature = "afl")]
 use afl::fuzz;
 
 #[derive(Debug)]
@@ -15,17 +13,10 @@ struct FuzzInput {
 impl<'a> Arbitrary<'a> for FuzzInput {
     fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
         let password = String::arbitrary(u)?;
-        let mut salt = [0u8; 16];
-        u.fill_buffer(&mut salt)?;
-        let mut nonce = [0u8; 12];
-        u.fill_buffer(&mut nonce)?;
+        let mut salt = [0u8; 16]; u.fill_buffer(&mut salt)?;
+        let mut nonce = [0u8; 12]; u.fill_buffer(&mut nonce)?;
         let data = Vec::<u8>::arbitrary(u)?;
-        Ok(Self {
-            password,
-            salt,
-            nonce,
-            data,
-        })
+        Ok(Self { password, salt, nonce, data })
     }
 }
 
@@ -39,7 +30,7 @@ fn process_input(input: FuzzInput) {
     let mut buf = input.data.clone();
     let mut counter = 1u32;
     encrypt_decrypt_in_place(&mut buf, &key, &input.nonce, &mut counter);
-    counter = 1u32;
+    counter = 1;
     encrypt_decrypt_in_place(&mut buf, &key, &input.nonce, &mut counter);
     assert_eq!(buf, input.data);
 
@@ -48,12 +39,13 @@ fn process_input(input: FuzzInput) {
     assert_eq!(pt, input.data);
 }
 
-fuzz_target!(|input: FuzzInput| { process_input(input) });
-
-#[cfg(feature = "afl")]
 fn main() {
-    fuzz!(|data: FuzzInput| {
-        process_input(data);
+    // AFL will feed us raw byte slices; we try to parse them into our FuzzInput.
+    fuzz!(|data: &[u8]| {
+        let mut u = Unstructured::new(data);
+        if let Ok(input) = FuzzInput::arbitrary(&mut u) {
+            process_input(input);
+        }
     });
 }
 

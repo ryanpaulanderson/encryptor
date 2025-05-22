@@ -1,0 +1,49 @@
+name: "AFL Fuzz Nightly"
+
+on:
+  schedule:
+    - cron: '0 0 * * *'    # Runs daily at midnight UTC
+  workflow_dispatch:
+
+jobs:
+  fuzz:
+    name: "Run AFL++ Fuzzer"
+    runs-on: ubuntu-latest
+    timeout-minutes: 80
+
+    steps:
+      - name: "Checkout repository"
+        uses: actions/checkout@v3
+
+      - name: "Install system dependencies"
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y afl++ libssl-dev pkg-config uuid-runtime
+
+      - name: "Install Rust toolchain (stable)"
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - name: "Install cargo-afl"
+        run: cargo install cargo-afl --locked
+
+      - name: "Build AFL++ runtime"
+        run: cargo afl config --build --force
+
+      - name: "Build AFL harness"
+        run: |
+          cd fuzz
+          cargo afl build --release --features afl --bin encryptor_afl
+
+      - name: "Prepare seed corpus"
+        run: |
+          cd fuzz
+          mkdir -p in out
+          uuidgen > in/seed1
+
+      - name: "Run AFL++ fuzz for 1 hour"
+        run: |
+          cd fuzz
+          afl-fuzz -i in -o out -V 3600 -- ./target/release/encryptor_afl
