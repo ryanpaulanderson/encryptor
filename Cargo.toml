@@ -1,3 +1,8 @@
+[package]
+name = "encryptor"
+version = "0.1.0"
+edition = "2021"
+
 [workspace]
 members = [
     "crates/chacha20_poly1305_custom",
@@ -5,3 +10,24 @@ members = [
     "crates/encryptor_core"
 ]
 resolver = "2"
+
+[dependencies]
+chacha20_poly1305_custom = { path = "crates/chacha20_poly1305_custom" }
+chacha20_poly1305_vetted = { path = "crates/chacha20_poly1305_vetted" }
+encryptor_core = { path = "crates/encryptor_core" }
+
+[dev-dependencies]
+proptest = "1.0"
+tempfile = "3.5"
+rand = "0.9"
+sha2 = "0.10"
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+poly1305 = "0.8.0"
+secrecy = "0.10"
+argon2 = "0.5"
+hex = "0.4"
+clap = { version = "4", features = ["derive"] }
+arbitrary = "1.4"
+libfuzzer-sys = "0.4"
+afl = "0.15"
+criterion = "0.6"

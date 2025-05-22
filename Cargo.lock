@@ -451,6 +451,29 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "48c757948c5ede0e46177b7add2e67155f70e33c07fea8284df6576da70b3719"
 
 [[package]]
+name = "encryptor"
+version = "0.1.0"
+dependencies = [
+ "afl",
+ "arbitrary",
+ "argon2",
+ "chacha20_poly1305_custom",
+ "chacha20_poly1305_vetted",
+ "clap",
+ "criterion",
+ "ed25519-dalek",
+ "encryptor_core",
+ "hex",
+ "libfuzzer-sys",
+ "poly1305",
+ "proptest",
+ "rand 0.9.1",
+ "secrecy",
+ "sha2",
+ "tempfile",
+]
+
+[[package]]
 name = "encryptor_core"
 version = "0.1.0"
 
