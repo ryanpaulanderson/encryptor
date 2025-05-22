@@ -1,4 +1,4 @@
-//! Error types used by the [`encryptor`](crate) crate.
+//! Error types used by the [`chacha20_poly1305_custom`](crate) crate.
 
 use std::fmt;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -11,13 +11,13 @@ static VERBOSE: AtomicBool = AtomicBool::new(false);
 /// # Examples
 ///
 /// ```
-/// encryptor::error::set_verbose(true);
+/// chacha20_poly1305_custom::error::set_verbose(true);
 /// ```
 pub fn set_verbose(val: bool) {
     VERBOSE.store(val, Ordering::Relaxed);
 }
 
-/// Errors that can occur when using [`encryptor`](crate).
+/// Errors that can occur when using [`chacha20_poly1305_custom`](crate).
 #[derive(Debug)]
 pub enum Error {
     /// Underlying I/O error kind when reading or writing files.

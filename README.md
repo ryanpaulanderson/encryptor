@@ -30,7 +30,7 @@ documentation can be generated locally using `cargo doc --no-deps` and is
 included in the repository under the `docs/` directory.
 
 ```rust
-use encryptor::{Argon2Config, derive_key, encrypt_decrypt};
+use chacha20_poly1305_custom::{Argon2Config, derive_key, encrypt_decrypt};
 
 let cfg = Argon2Config::default();
 let key = derive_key("secret", b"0123456789abcdef", &cfg).unwrap();

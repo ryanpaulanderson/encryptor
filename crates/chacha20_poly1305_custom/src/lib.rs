@@ -11,7 +11,7 @@
 //! Encrypt and decrypt a short message:
 //!
 //! ```
-//! use encryptor::{Argon2Config, derive_key, encrypt_decrypt};
+//! use chacha20_poly1305_custom::{Argon2Config, derive_key, encrypt_decrypt};
 //!
 //! let cfg = Argon2Config::default();
 //! let key = derive_key("password", b"0123456789abcdef", &cfg).unwrap();
@@ -115,7 +115,7 @@ pub fn unlock(_buf: &[u8]) -> std::io::Result<()> {
 /// # Examples
 ///
 /// ```
-/// use encryptor::{derive_key, Argon2Config};
+/// use chacha20_poly1305_custom::{derive_key, Argon2Config};
 /// use secrecy::ExposeSecret;
 /// let cfg = Argon2Config::default();
 /// let key = derive_key("pw", b"0123456789abcdef", &cfg).unwrap();
@@ -143,7 +143,7 @@ pub fn derive_key(
 /// # Examples
 ///
 /// ```ignore
-/// assert_eq!(encryptor::rotl(0x0123_4567, 8), 0x23_4567_01);
+/// assert_eq!(chacha20_poly1305_custom::rotl(0x0123_4567, 8), 0x23_4567_01);
 /// ```
 fn rotl(v: u32, c: u32) -> u32 {
     v.rotate_left(c)
@@ -155,7 +155,7 @@ fn rotl(v: u32, c: u32) -> u32 {
 ///
 /// ```ignore
 /// let mut s = [0u32; 16];
-/// encryptor::quarter_round(&mut s, 0, 1, 2, 3);
+/// chacha20_poly1305_custom::quarter_round(&mut s, 0, 1, 2, 3);
 /// ```
 fn quarter_round(state: &mut [u32; 16], a: usize, b: usize, c: usize, d: usize) {
     state[a] = state[a].wrapping_add(state[b]);
@@ -193,7 +193,7 @@ macro_rules! double_round {
 /// ```ignore
 /// let mut data = [0u8; 4];
 /// let mask = [1u8; 4];
-/// unsafe { encryptor::xor_in_place(&mut data, &mask) };
+/// unsafe { chacha20_poly1305_custom::xor_in_place(&mut data, &mask) };
 /// assert_eq!(data, mask);
 /// ```
 unsafe fn xor_in_place(dst: &mut [u8], src: &[u8]) {
@@ -213,7 +213,7 @@ unsafe fn xor_in_place(dst: &mut [u8], src: &[u8]) {
 ///
 /// ```ignore
 /// let key = [0u8; 32];
-/// let block = encryptor::chacha20_block_bytes(&key, 0, &[0u8; 12]);
+/// let block = chacha20_poly1305_custom::chacha20_block_bytes(&key, 0, &[0u8; 12]);
 /// assert_eq!(block.len(), 64);
 /// ```
 fn chacha20_block_bytes(key_bytes: &[u8; 32], counter: u32, nonce: &[u8; 12]) -> [u8; 64] {
@@ -249,7 +249,7 @@ fn chacha20_block_bytes(key_bytes: &[u8; 32], counter: u32, nonce: &[u8; 12]) ->
 ///
 /// # Examples
 /// ```
-/// use encryptor::{chacha20_block, derive_key, Argon2Config};
+/// use chacha20_poly1305_custom::{chacha20_block, derive_key, Argon2Config};
 /// let cfg = Argon2Config::default();
 /// let key = derive_key("pw", b"0123456789abcdef", &cfg).unwrap();
 /// let block = chacha20_block(&key, 0, &[0u8; 12]);
@@ -266,7 +266,7 @@ use subtle::ConstantTimeEq;
 /// # Examples
 ///
 /// ```
-/// use encryptor::ct_eq;
+/// use chacha20_poly1305_custom::ct_eq;
 /// assert!(ct_eq(b"a", b"a"));
 /// assert!(!ct_eq(b"a", b"b"));
 /// ```
@@ -287,7 +287,7 @@ pub fn ct_eq(a: &[u8], b: &[u8]) -> bool {
 /// # Examples
 ///
 /// ```
-/// use encryptor::read_file_ct;
+/// use chacha20_poly1305_custom::read_file_ct;
 /// use std::io::Write;
 /// let mut tmp = tempfile::NamedTempFile::new().unwrap();
 /// writeln!(tmp, "hello").unwrap();
@@ -315,7 +315,7 @@ pub fn read_file_ct(path: &Path) -> Result<Vec<u8>> {
 /// # Examples
 ///
 /// ```
-/// use encryptor::{encrypt_decrypt, derive_key, Argon2Config};
+/// use chacha20_poly1305_custom::{encrypt_decrypt, derive_key, Argon2Config};
 /// let cfg = Argon2Config::default();
 /// let key = derive_key("pw", b"0123456789abcdef", &cfg).unwrap();
 /// let nonce = [0u8; 12];
@@ -338,7 +338,7 @@ pub fn encrypt_decrypt(data: &[u8], key: &SecretBox<[u8; 32]>, nonce: &[u8; 12])
 /// # Examples
 ///
 /// ```
-/// use encryptor::{encrypt_decrypt_in_place, derive_key, Argon2Config};
+/// use chacha20_poly1305_custom::{encrypt_decrypt_in_place, derive_key, Argon2Config};
 /// let cfg = Argon2Config::default();
 /// let key = derive_key("pw", b"0123456789abcdef", &cfg).unwrap();
 /// let nonce = [0u8; 12];
@@ -388,7 +388,7 @@ pub const SIG_LEN: usize = ed25519_dalek::SIGNATURE_LENGTH;
 /// # Examples
 ///
 /// ```
-/// use encryptor::{sign, verify, SIG_LEN, Ed25519PrivKey};
+/// use chacha20_poly1305_custom::{sign, verify, SIG_LEN, Ed25519PrivKey};
 /// use ed25519_dalek::SigningKey;
 /// use rand::random;
 ///
@@ -412,7 +412,7 @@ pub fn sign(data: &[u8], priv_key: &Ed25519PrivKey) -> [u8; SIG_LEN] {
 ///
 /// ```
 /// use ed25519_dalek::SigningKey;
-/// use encryptor::{sign, verify};
+/// use chacha20_poly1305_custom::{sign, verify};
 /// use rand::random;
 ///
 /// let key_bytes: [u8; 32] = random();
@@ -440,7 +440,7 @@ pub const ENC_KEY_LEN: usize = KEY_MAGIC.len() + 4 + 4 + 4 + 16 + 12 + 32 + 16;
 /// # Examples
 ///
 /// ```
-/// use encryptor::{encrypt_priv_key, decrypt_priv_key, Argon2Config};
+/// use chacha20_poly1305_custom::{encrypt_priv_key, decrypt_priv_key, Argon2Config};
 /// let seed = [0u8; 32];
 /// let cfg = Argon2Config::default();
 /// let enc = encrypt_priv_key(&seed, "pw", &cfg).unwrap();
@@ -516,7 +516,7 @@ pub fn encrypt_priv_key(seed: &[u8; 32], password: &str, cfg: &Argon2Config) -> 
 /// # Examples
 ///
 /// ```
-/// use encryptor::{encrypt_priv_key, decrypt_priv_key, Argon2Config};
+/// use chacha20_poly1305_custom::{encrypt_priv_key, decrypt_priv_key, Argon2Config};
 /// let seed = [0u8; 32];
 /// let cfg = Argon2Config::default();
 /// let enc = encrypt_priv_key(&seed, "pw", &cfg).unwrap();

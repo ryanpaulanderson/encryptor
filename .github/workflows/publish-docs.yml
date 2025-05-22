@@ -7,6 +7,7 @@ on:
       - '**/Cargo.toml'
       - '**/Cargo.lock'
       - 'src/**'
+      - 'crates/**'
       - 'tests/**'
       - 'README.md'
       - 'CHANGELOG.md'
@@ -38,4 +39,4 @@ jobs:
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./target/doc/encryptor
+          publish_dir: ./target/doc/chacha20_poly1305_custom
