@@ -1,5 +1,5 @@
 use arbitrary::{Arbitrary, Unstructured};
-use encryptor::{Argon2Config, derive_key, encrypt_decrypt, encrypt_decrypt_in_place};
+use chacha20_poly1305_custom::{Argon2Config, derive_key, encrypt_decrypt, encrypt_decrypt_in_place};
 use afl::fuzz;
 
 #[derive(Debug)]

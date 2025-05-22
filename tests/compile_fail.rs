@@ -9,13 +9,13 @@ fn old_api_usage_fails_to_compile() {
     fs::create_dir_all(crate_dir.join("src")).unwrap();
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
     let cargo_toml = format!(
-        "[package]\nname = \"failcase\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\nencryptor = {{ path = \"{}\" }}\n",
+        "[package]\nname = \"failcase\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\nchacha20_poly1305_custom = {{ path = \"{}/crates/chacha20_poly1305_custom\" }}\n",
         manifest_dir.display()
     );
     fs::write(crate_dir.join("Cargo.toml"), cargo_toml).unwrap();
     fs::write(
         crate_dir.join("src/main.rs"),
-        r#"use encryptor::encrypt_decrypt_in_place;
+        r#"use chacha20_poly1305_custom::encrypt_decrypt_in_place;
 fn main() {
     let mut data = [0u8; 16];
     let key = [0u8; 32];
@@ -46,13 +46,13 @@ fn derive_key_wrong_salt_fails() {
     fs::create_dir_all(crate_dir.join("src")).unwrap();
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
     let cargo_toml = format!(
-        "[package]\nname = \"failcase2\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\nencryptor = {{ path = \"{}\" }}\n",
+        "[package]\nname = \"failcase2\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\nchacha20_poly1305_custom = {{ path = \"{}/crates/chacha20_poly1305_custom\" }}\n",
         manifest_dir.display()
     );
     fs::write(crate_dir.join("Cargo.toml"), cargo_toml).unwrap();
     fs::write(
         crate_dir.join("src/main.rs"),
-        r#"use encryptor::{derive_key, Argon2Config};
+        r#"use chacha20_poly1305_custom::{derive_key, Argon2Config};
 fn main() {
     let cfg = Argon2Config::default();
     let _ = derive_key("pw", &[0u8; 15], &cfg);

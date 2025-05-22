@@ -12,8 +12,8 @@ libfuzzer-sys = "0.4"
 arbitrary      = "1.4"
 afl            = "0.15"
 
-[dependencies.encryptor]
-path = ".."
+[dependencies.chacha20_poly1305_custom]
+path = "../crates/chacha20_poly1305_custom"
 
 [features]
 # enable the AFL harness

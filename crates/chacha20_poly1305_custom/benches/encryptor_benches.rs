@@ -1,6 +1,8 @@
+use chacha20_poly1305_custom::{
+    chacha20_block, encrypt_decrypt_in_place, sign, verify, Ed25519PrivKey,
+};
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use ed25519_dalek::{SigningKey, SECRET_KEY_LENGTH};
-use encryptor::{chacha20_block, encrypt_decrypt_in_place, sign, verify, Ed25519PrivKey};
 use rand_core::{OsRng, TryRngCore};
 use secrecy::SecretBox;
 use zeroize::Zeroize;

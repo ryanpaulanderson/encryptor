@@ -87,7 +87,7 @@ fn verify_hash_failure() {
 
     // modify encrypted file so hash does not match
     let mut tampered = data.clone();
-    tampered[encryptor::HEADER_LEN + 4] ^= 0x01;
+    tampered[chacha20_poly1305_custom::HEADER_LEN + 4] ^= 0x01;
     fs::write(&enc, &tampered).unwrap();
 
     let mut dec = std::env::temp_dir();
@@ -106,7 +106,7 @@ fn tampered_ciphertext_detected() {
     let enc = encrypt_file(input, pass);
 
     let mut ct = fs::read(&enc).unwrap();
-    ct[encryptor::HEADER_LEN + 14] ^= 0x20; // flip a bit in ciphertext
+    ct[chacha20_poly1305_custom::HEADER_LEN + 14] ^= 0x20; // flip a bit in ciphertext
     fs::write(&enc, &ct).unwrap();
 
     let mut dec = std::env::temp_dir();
@@ -161,7 +161,7 @@ proptest! {
                 data.remove(24);
             }
             _ => { // extra byte after header
-                data.insert(encryptor::HEADER_LEN, 0); // insert zero before ciphertext
+                data.insert(chacha20_poly1305_custom::HEADER_LEN, 0); // insert zero before ciphertext
             }
         }
 
