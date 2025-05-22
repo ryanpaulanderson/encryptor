@@ -44,6 +44,8 @@ jobs:
           uuidgen > in/seed1
 
       - name: "Run AFL++ fuzz for 1 hour"
+        env:
+            AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES: "1"
         run: |
-          cd fuzz
-          afl-fuzz -i in -o out -V 3600 -- ./target/release/encryptor_afl
+            cd fuzz
+            afl-fuzz -i in -o out -V 3600 -- ./target/release/encryptor_afl
