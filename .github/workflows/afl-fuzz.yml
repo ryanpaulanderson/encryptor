@@ -27,15 +27,15 @@ jobs:
           override: true
 
       - name: "Install cargo-afl"
-        run: cargo install cargo-afl --locked
+        run: cargo +stable install cargo-afl --locked
 
       - name: "Build AFL++ runtime"
-        run: cargo afl config --build --force
+        run: cargo +stable afl config --build --force
 
-      - name: "Build AFL harness"
+      - name: "Build AFL harness (stable)"
         run: |
           cd fuzz
-          cargo afl build --release --features afl --bin encryptor_afl
+          cargo +stable afl build --release --features afl --bin encryptor_afl
 
       - name: "Prepare seed corpus"
         run: |
