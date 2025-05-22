@@ -1,4 +1,6 @@
-use chacha20_poly1305_custom::{ct_eq, decrypt_priv_key, encrypt_priv_key, Argon2Config, ENC_KEY_LEN};
+use chacha20_poly1305_custom::{
+    ct_eq, decrypt_priv_key, encrypt_priv_key, Argon2Config, ENC_KEY_LEN,
+};
 use std::time::Instant;
 
 // Run the given closure `iters` times, returning elapsed duration

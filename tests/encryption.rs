@@ -1,4 +1,6 @@
-use chacha20_poly1305_custom::{chacha20_block, ct_eq, derive_key, encrypt_decrypt, read_file_ct, Argon2Config};
+use chacha20_poly1305_custom::{
+    chacha20_block, ct_eq, derive_key, encrypt_decrypt, read_file_ct, Argon2Config,
+};
 use poly1305::{
     universal_hash::{KeyInit, UniversalHash},
     Block, Key, Poly1305,
