@@ -438,6 +438,7 @@ dependencies = [
  "rand_core 0.9.3",
  "rayon",
  "rpassword",
+ "rtoolbox",
  "secrecy",
  "sha2",
  "subtle",
