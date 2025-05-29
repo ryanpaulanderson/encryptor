@@ -1,4 +1,4 @@
-use encryptor::chacha20_block;
+use chacha20_poly1305_custom::chacha20_block;
 use secrecy::SecretBox;
 
 #[test]

@@ -1,11 +1,11 @@
-//! Command line interface for the `encryptor` crate.
+//! Command line interface for the `chacha20_poly1305_custom` crate.
 //!
 //! This binary encrypts and decrypts files using ChaCha20-Poly1305 with an
 //! Argon2 key derivation function.  Run `chacha20_poly1305 --help` to see the
 //! available options.
 
+use chacha20_poly1305_custom::error::{set_verbose, Error, Result};
 use clap::{Args, Parser, Subcommand};
-use encryptor::error::{set_verbose, Error, Result};
 use rand_core::{OsRng, TryRngCore};
 use rpassword::prompt_password_from_bufread;
 use sha2::{Digest, Sha256};
@@ -17,11 +17,11 @@ use std::os::unix::fs::OpenOptionsExt;
 use std::path::PathBuf;
 use zeroize::Zeroize;
 
-use ed25519_dalek::{SigningKey, VerifyingKey, SECRET_KEY_LENGTH, SIGNATURE_LENGTH};
-use encryptor::{
+use chacha20_poly1305_custom::{
     chacha20_block, ct_eq, decrypt_priv_key, derive_key, encrypt_decrypt_in_place,
     encrypt_priv_key, sign, verify, Argon2Config, ENC_KEY_LEN, HEADER_LEN, KEY_MAGIC, MAGIC,
 };
+use ed25519_dalek::{SigningKey, VerifyingKey, SECRET_KEY_LENGTH, SIGNATURE_LENGTH};
 use poly1305::{
     universal_hash::{KeyInit, UniversalHash},
     Block, Key, Poly1305,

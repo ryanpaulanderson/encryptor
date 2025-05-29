@@ -97,7 +97,7 @@ fn verify_fails_on_bad_signature() {
 
     // flip a byte in the embedded signature
     let mut data = fs::read(&enc).unwrap();
-    data[encryptor::HEADER_LEN - 1] ^= 1;
+    data[chacha20_poly1305_custom::HEADER_LEN - 1] ^= 1;
     fs::write(&enc, data).unwrap();
 
     let mut dec_cmd = Command::new(BIN)
@@ -189,8 +189,8 @@ proptest! {
         let sk_bytes: [u8; 32] = rand::random();
         let sk = SigningKey::from_bytes(&sk_bytes);
         let pk = sk.verifying_key();
-        let sig = encryptor::sign(&data, &sk);
-        prop_assert!(encryptor::verify(&data, &sig, &pk));
+        let sig = chacha20_poly1305_custom::sign(&data, &sk);
+        prop_assert!(chacha20_poly1305_custom::verify(&data, &sig, &pk));
     }
 
     #[test]
@@ -198,8 +198,8 @@ proptest! {
         let sk_bytes: [u8; 32] = rand::random();
         let sk = SigningKey::from_bytes(&sk_bytes);
         let pk = sk.verifying_key();
-        let sig = encryptor::sign(&data, &sk);
+        let sig = chacha20_poly1305_custom::sign(&data, &sk);
         data[0] ^= 1;
-        prop_assert!(!encryptor::verify(&data, &sig, &pk));
+        prop_assert!(!chacha20_poly1305_custom::verify(&data, &sig, &pk));
     }
 }

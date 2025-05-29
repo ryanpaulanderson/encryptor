@@ -2,7 +2,7 @@ use std::fs;
 use std::io::Write;
 use std::process::{Command, Stdio};
 
-use encryptor::ENC_KEY_LEN;
+use chacha20_poly1305_custom::ENC_KEY_LEN;
 
 const BIN: &str = env!("CARGO_BIN_EXE_chacha20_poly1305");
 
