@@ -90,9 +90,13 @@ fn sha256_file(path: &PathBuf) -> Result<String> {
 /// println!("{}", pw.len());
 /// ```
 fn prompt_env(prompt: &str) -> io::Result<String> {
-    let mut input = io::stdin().lock();
-    let mut output = io::stdout();
-    prompt_password_from_bufread(&mut input, &mut output, prompt)
+    if rtoolbox::atty::is(rtoolbox::atty::Stream::Stdin) {
+        rpassword::prompt_password(prompt)
+    } else {
+        let mut input = io::stdin().lock();
+        let mut output = io::stdout();
+        prompt_password_from_bufread(&mut input, &mut output, prompt)
+    }
 }
 
 /// Generate an Ed25519 key pair in `dir` optionally encrypting the private key.
