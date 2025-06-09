@@ -22,7 +22,7 @@ ed25519-dalek = { version = "2", features = ["rand_core"] }
 rand_core = { version = "0.9", features = ["std"] }
 
 [dev-dependencies]
-proptest = "1.0"
+proptest = "1.7"
 tempfile = "3.5"
 autocfg = "1.4.0"
 criterion = "0.6"
