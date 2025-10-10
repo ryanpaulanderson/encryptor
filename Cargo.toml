@@ -28,7 +28,7 @@ autocfg = "1.4.0"
 criterion = "0.6"
 arbitrary      = "1.4"  # Structured input generation 
 libfuzzer-sys  = "0.4"  # Link against libFuzzer 
-afl            = "0.15"  # AFL instrumentation and macros 
+afl            = "0.16"  # AFL instrumentation and macros 
 
 [[bin]]
 name = "chacha20_poly1305"
