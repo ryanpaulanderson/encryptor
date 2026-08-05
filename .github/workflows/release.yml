@@ -19,7 +19,7 @@ jobs:
     outputs:
       upload_url: ${{ steps.create_release.outputs.upload_url }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -48,7 +48,7 @@ jobs:
 
       - name: Install cargo-audit
         if: steps.cache-audit.outputs.cache-hit != 'true'
-        run: cargo install --version ^0.21 cargo-audit
+        run: cargo install --locked --version ^0.22 cargo-audit
 
       - name: Format
         run: cargo fmt -- --check
@@ -114,7 +114,7 @@ jobs:
       matrix:
         target: [x86_64-apple-darwin, aarch64-apple-darwin]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 

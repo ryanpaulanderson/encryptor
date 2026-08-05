@@ -22,13 +22,13 @@ ed25519-dalek = { version = "2", features = ["rand_core"] }
 rand_core = { version = "0.9", features = ["std"] }
 
 [dev-dependencies]
-proptest = "1.0"
+proptest = "1.9"
 tempfile = "3.5"
-autocfg = "1.4.0"
+autocfg = "1.5.0"
 criterion = "0.6"
 arbitrary      = "1.4"  # Structured input generation 
 libfuzzer-sys  = "0.4"  # Link against libFuzzer 
-afl            = "0.15"  # AFL instrumentation and macros 
+afl            = "0.16"  # AFL instrumentation and macros 
 
 [[bin]]
 name = "chacha20_poly1305"
