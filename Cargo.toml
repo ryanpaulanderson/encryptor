@@ -9,19 +9,19 @@ license = "GPL-3.0-or-later"
 clap = { version = "4", features = ["derive"] }
 argon2 = "0.5"
 zeroize = "1.5"
-sha2 = "0.10"
-poly1305 = { version = "0.8", features = ["zeroize"] }
+sha2 = "0.11"
+poly1305 = { version = "0.9", features = ["zeroize"] }
 secrecy = "0.10"
 subtle = "2.6"
 rpassword = "7.4"
-ed25519-dalek = { version = "2", features = ["digest", "rand_core", "zeroize"] }
+ed25519-dalek = { version = "3", features = ["digest", "rand_core", "zeroize"] }
 rand_core = { version = "0.9", features = ["os_rng", "std"] }
 rustix = { version = "1.0.7", features = ["fs"] }
 
 [dev-dependencies]
 proptest = "1.9"
 tempfile = "3.5"
-criterion = "0.6"
+criterion = "0.8"
 chacha20poly1305 = "0.11"
 
 [[bin]]
