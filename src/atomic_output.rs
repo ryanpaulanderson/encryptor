@@ -103,9 +103,11 @@ impl AtomicOutput {
     pub(crate) fn new(path: &Path, unix_mode: u32) -> Result<Self> {
         let (parent, final_name) = split_output(path)?;
         let directory = open_directory(&parent)?;
-        let mode_bits = u16::try_from(unix_mode)
-            .map_err(|_| Error::InvalidFormat("Unix output mode does not fit u16"))?;
-        let mode = Mode::from_bits_retain(mode_bits);
+        let mode = match unix_mode {
+            0o600 => Mode::RUSR | Mode::WUSR,
+            0o644 => Mode::RUSR | Mode::WUSR | Mode::RGRP | Mode::ROTH,
+            _ => return Err(Error::InvalidFormat("unsupported Unix output mode")),
+        };
 
         for _ in 0..TEMP_ATTEMPTS {
             let temporary_name = random_temporary_name()?;

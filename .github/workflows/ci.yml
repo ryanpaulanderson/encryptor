@@ -52,7 +52,9 @@ jobs:
         with:
           persist-credentials: false
       - name: Install pinned actionlint source
-        run: go install github.com/rhysd/actionlint/cmd/actionlint@03d0035246f3e81f36aed592ffb4bebf33a03106
+        run: |
+          go install github.com/rhysd/actionlint/cmd/actionlint@03d0035246f3e81f36aed592ffb4bebf33a03106
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
       - name: Install checksum-pinned ShellCheck 0.11.0
         run: |
           curl --fail --show-error --silent --location \
@@ -75,7 +77,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Install exact Rust toolchain
-        run: rustup toolchain install 1.97.1 --profile minimal
+        run: rustup toolchain install 1.97.1 --profile minimal --component rustfmt
       - name: Compile real AFL targets
         run: |
           cargo +1.97.1 fmt --manifest-path fuzz/Cargo.toml -- --check
@@ -93,6 +95,6 @@ jobs:
         with:
           persist-credentials: false
       - name: Update moving stable
-        run: rustup update stable --profile minimal
+        run: rustup toolchain install stable --profile minimal
       - name: Compatibility check
         run: cargo +stable check --all-targets --all-features --locked
