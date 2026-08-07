@@ -2,122 +2,97 @@ name: CI
 
 on:
   pull_request:
-    paths:
-      - '**/Cargo.toml'
-      - '**/Cargo.lock'
-      - 'src/**'
-      - 'tests/**'
-      - 'benches/**'
-      - '.github/workflows/ci.yml'
   push:
     branches: [main]
-    paths:
-      - '**/Cargo.toml'
-      - '**/Cargo.lock'
-      - 'src/**'
-      - 'tests/**'
-      - 'benches/**'
-      - '.github/workflows/ci.yml'
 
-permissions:
-  contents: read        # still allow checking out code
-  issues: write         # enable creating issue comments
-  pull-requests: write  # if you want to comment on PR threads
+permissions: {}
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
+  quality:
+    name: Rust 1.97.1 / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Set up Rust
-        uses: actions-rs/toolchain@v1
+      - name: Checkout without persisted credentials
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          toolchain: stable
-          override: true
-          components: rustfmt, clippy
+          persist-credentials: false
+      - name: Install exact Rust toolchain
+        run: rustup toolchain install 1.97.1 --profile minimal --component rustfmt,clippy
+      - name: Format
+        run: cargo +1.97.1 fmt --all -- --check
+      - name: Clippy
+        run: cargo +1.97.1 clippy --all-targets --all-features --locked -- -D warnings
+      - name: Test
+        run: cargo +1.97.1 test --all-features --locked
+      - name: Release-mode test
+        run: cargo +1.97.1 test --release --all-features --locked
+      - name: Documentation
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo +1.97.1 doc --no-deps --all-features --locked
+      - name: Prepared-cache offline test
+        run: cargo +1.97.1 test --all-features --locked --offline
+      - name: Reject whitespace and conflict-marker errors
+        run: git diff --check
 
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            vendor
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: Cache cargo-audit
-        id: cache-audit
-        uses: actions/cache@v4
-        with:
-          path: ~/.cargo/bin/cargo-audit
-          key: ${{ runner.os }}-cargo-audit-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: Install cargo-audit
-        if: steps.cache-audit.outputs.cache-hit != 'true'
-        run: cargo install --locked --version ^0.22 --jobs 4 cargo-audit
-
-      - name: Run checks
-        run: |
-          cargo fmt -- --check
-          cargo clippy -- -D warnings
-          RUST_TEST_THREADS=$(nproc) cargo test
-          cargo audit --deny warnings
-          RUSTDOCFLAGS="--deny broken-intra-doc-links" cargo doc --no-deps --quiet
-
-  benchmark:
-    name: 📊 Benchmark
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+  workflow-lint:
+    name: Workflow and shell lint
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Set up Rust (stable)
-        uses: actions-rs/toolchain@v1
+      - name: Checkout without persisted credentials
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          toolchain: stable
-          override: true
-          components: rustfmt, clippy
-
-      - name: Cache critcmp
-        id: cache-critcmp
-        uses: actions/cache@v4
-        with:
-          path: ~/.cargo/bin/critcmp
-          key: ${{ runner.os }}-cargo-critcmp-${{ hashFiles('**/Cargo.lock') }}
-  
-      - name: Install critcmp
-        if: steps.cache-critcmp.outputs.cache-hit != 'true'
-        # Add --force to the cargo install command
-        run: cargo install critcmp --force
-
-      - name: Run baseline benches on `main`
+          persist-credentials: false
+      - name: Install pinned actionlint source
+        run: go install github.com/rhysd/actionlint/cmd/actionlint@03d0035246f3e81f36aed592ffb4bebf33a03106
+      - name: Install checksum-pinned ShellCheck 0.11.0
         run: |
-          git fetch origin main
-          git checkout origin/main
-          # MODIFIED LINE: Add --bench encryptor_benchmarks
-          cargo bench --bench encryptor_benchmarks -- --save-baseline main
+          curl --fail --show-error --silent --location \
+            --output "$RUNNER_TEMP/shellcheck.tar.xz" \
+            https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.x86_64.tar.xz
+          echo "8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198  $RUNNER_TEMP/shellcheck.tar.xz" | sha256sum --check -
+          tar -xJf "$RUNNER_TEMP/shellcheck.tar.xz" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/shellcheck-v0.11.0" >> "$GITHUB_PATH"
+      - name: Validate workflows and embedded shell
+        run: actionlint -shellcheck shellcheck
 
-      - name: Run PR benches
-        run: |
-          git checkout ${{ github.sha }}
-          # Only save the baseline for the PR. The comparison is done by critcmp later.
-          cargo bench --bench encryptor_benchmarks -- --save-baseline pr
-
-      - name: Compare benchmarks
-        run: critcmp main pr > bench.diff
-
-      - name: Post benchmark report
-        uses: actions/github-script@v8
+  fuzz-build:
+    name: AFL target build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout without persisted credentials
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const diff = require('fs').readFileSync('bench.diff', 'utf8');
-            github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: `## 📊 Benchmark delta\n\`\`\`\n${diff}\n\`\`\``
-            });
+          persist-credentials: false
+      - name: Install exact Rust toolchain
+        run: rustup toolchain install 1.97.1 --profile minimal
+      - name: Compile real AFL targets
+        run: |
+          cargo +1.97.1 fmt --manifest-path fuzz/Cargo.toml -- --check
+          cargo +1.97.1 check --manifest-path fuzz/Cargo.toml --locked --features afl --bins
+
+  stable-canary:
+    name: Moving stable canary
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout without persisted credentials
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Update moving stable
+        run: rustup update stable --profile minimal
+      - name: Compatibility check
+        run: cargo +stable check --all-targets --all-features --locked

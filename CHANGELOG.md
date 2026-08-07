@@ -1,11 +1,35 @@
 # Changelog
 
-## Unreleased
-- Enforce streaming API to take `&Secret<[u8; 32]>` keys and unwrap them once internally.
-- Add RFC-8439 ChaCha20 block-function vector test.
-- Add additional ChaCha20 block test vectors from RFC 7539 Appendix A.
-- Private key generated with `--generate-keys` now uses `0o600` permissions and a
-  warning is shown when loading a signing key that is too permissive.
-- Removed the `--key-password` flag. Key generation and encrypted key loading
-  now always prompt for a password; leaving it blank stores the key unencrypted
-  and prints a warning.
+## 0.53.0 - Unreleased
+
+This is an intentionally breaking security release. The crate version now
+matches the repository tag series.
+
+- Replace CPV1 with the bounded, record-authenticated CPV2 streaming format.
+- Replace EDEKV1 and multi-file key generation with one encrypted EDEKV2 key
+  bundle plus explicit public-key export.
+- Remove all public raw ChaCha20, caller-managed nonce/counter, raw KDF,
+  memory-locking, constant-time-file-read, and detached-signature helpers.
+- Fix plaintext publication before final authentication.
+- Fix private-key symlink following, overwrite, and permission-at-creation
+  failures through atomic no-clobber publication.
+- Fix attacker-controlled Argon2 work and unchecked MiB conversion by using a
+  fixed authenticated RFC 9106 profile.
+- Bound memory to a 1 MiB record plus the fixed 64 MiB Argon2 working set.
+- Add Ed25519ph streaming signatures with mandatory verification policy.
+- Add RFC vectors, independent differential tests, parser properties, tamper,
+  finality, downgrade, filesystem, permissions, and CLI regressions.
+- Replace the inaccurate fuzz setup with two locked AFL parser/state targets.
+- Harden CI and releases with exact toolchains, pinned actions, minimal job
+  permissions, locked validation, dependency inventories, checksums, and Linux
+  plus unsigned macOS archives published automatically after a version-bumping
+  merge to `main`.
+- State the experimental, unaudited, not-for-important-data assurance level
+  prominently and remove inaccurate constant-time, Prusti, and release claims.
+
+### Compatibility
+
+- CPV1 and EDEKV1 are not readable.
+- The previous Rust public API and CLI KDF/hash flags are removed.
+- CPV2 and EDEKV2 become immutable once v0.53.0 is published; future semantic
+  cryptographic changes require new authenticated format versions.

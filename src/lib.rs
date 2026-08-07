@@ -1,617 +1,786 @@
-#![deny(missing_docs)]
-//! ChaCha20-Poly1305 encryption utilities with an Argon2 key derivation.
+//! Experimental authenticated file encryption using a custom RFC 8439
+//! ChaCha20-Poly1305 composition.
 //!
-//! This crate provides simple helper functions for deriving encryption keys
-//! using Argon2 and performing in-place or buffer-to-buffer encryption with
-//! the ChaCha20 stream cipher.  The implementation is intentionally minimal and
-//! suitable for experimentation rather than production use.
+//! # Security status
 //!
-//! # Examples
-//!
-//! Encrypt and decrypt a short message:
-//!
-//! ```
-//! use encryptor::{Argon2Config, derive_key, encrypt_decrypt};
-//!
-//! let cfg = Argon2Config::default();
-//! let key = derive_key("password", b"0123456789abcdef", &cfg).unwrap();
-//! let nonce = [0u8; 12];
-//! let cipher = encrypt_decrypt(b"hello", &key, &nonce);
-//! let plain = encrypt_decrypt(&cipher, &key, &nonce);
-//! assert_eq!(plain, b"hello");
-//! ```
+//! This crate is an educational custom cryptography implementation. It has not
+//! been independently audited and must not be used to protect important data.
+//! Its public API deliberately exposes only complete authenticated file and key
+//! workflows; nonce, counter, raw stream-cipher, and unauthenticated plaintext
+//! operations are private.
+
+#![cfg_attr(not(unix), allow(unused))]
+
+#[cfg(not(unix))]
+compile_error!("encryptor currently supports Unix platforms only");
+
+mod atomic_output;
+mod crypto;
+mod format;
 
 pub mod error;
-use crate::error::{Error, Result};
+
+pub use atomic_output::PublicationOutcome;
+pub use error::{Error, Result};
+pub use format::{EnvelopeMetadata, KeyBundleMetadata};
+
 use argon2::{Algorithm, Argon2, Params, Version};
-#[cfg(unix)]
-use libc::{mlock, munlock};
-use rayon::prelude::*;
-use secrecy::{ExposeSecret, SecretBox};
+use atomic_output::{open_regular_nofollow, AtomicOutput};
+use crypto::{open_record, seal_record, KEY_LEN, TAG_LEN};
+use ed25519_dalek::{Signature, SigningKey, VerifyingKey};
+use format::{
+    encoded_file_len, record_count, FileHeader, KeyHeader, RecordHeader, FILE_HEADER_LEN,
+    KDF_MEMORY_KIB, KDF_PARALLELISM, KDF_TIME, KEY_BUNDLE_LEN, KEY_HEADER_LEN, SIGNATURE_CONTEXT,
+    SIGNATURE_DOMAIN, SIGNATURE_PREFIX,
+};
+use rand_core::{OsRng, TryRngCore};
+use secrecy::{ExposeSecret, ExposeSecretMut, SecretBox, SecretString};
+use sha2::{Digest, Sha512};
 use std::fs::File;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::Path;
-use zeroize::Zeroize;
-
-/// File header magic bytes identifying the ChaCha20-Poly1305 format.
-pub const MAGIC: &[u8; 4] = b"CPV1"; // ChaChaPoly AEAD v1
-/// Number of bytes in the file header.
-///
-/// The header stores a 64 byte Ed25519 signature in addition to the
-/// previous fields (magic, version, salt and nonce).
-pub const HEADER_LEN: usize = 36 + ed25519_dalek::SIGNATURE_LENGTH;
-
-/// Configuration parameters for [`derive_key`].
-#[derive(Clone, Copy, Debug)]
-pub struct Argon2Config {
-    /// Memory cost in kibibytes used by the KDF.
-    pub mem_cost_kib: u32,
-    /// Number of hashing passes.
-    pub time_cost: u32,
-    /// Degree of parallelism.
-    pub parallelism: u32,
-}
-
-impl Default for Argon2Config {
-    /// Provide conservative default parameters.
-    fn default() -> Self {
-        Self {
-            mem_cost_kib: 64 * 1024,
-            time_cost: 4,
-            parallelism: 1,
-        }
-    }
-}
-
-#[cfg(unix)]
-/// Unlock memory previously protected with [`lock`].
-///
-/// # Errors
-///
-/// Returns an [`std::io::Error`] if the `munlock` syscall fails.
-pub fn unlock(buf: &[u8]) -> std::io::Result<()> {
-    let ret = unsafe { munlock(buf.as_ptr() as *const _, buf.len()) };
-    if ret == 0 {
-        Ok(())
-    } else {
-        Err(std::io::Error::last_os_error())
-    }
-}
-
-#[cfg(unix)]
-/// Lock memory to prevent swapping it to disk.
-///
-/// # Errors
-///
-/// Returns an [`std::io::Error`] if the `mlock` syscall fails.
-pub fn lock(buf: &[u8]) -> std::io::Result<()> {
-    let ret = unsafe { mlock(buf.as_ptr() as *const _, buf.len()) };
-    if ret == 0 {
-        Ok(())
-    } else {
-        Err(std::io::Error::last_os_error())
-    }
-}
-
-#[cfg(not(unix))]
-/// Stub on non-Unix systems that always succeeds.
-pub fn lock(_buf: &[u8]) -> std::io::Result<()> {
-    Ok(())
-}
-
-#[cfg(not(unix))]
-/// Stub on non-Unix systems that always succeeds.
-pub fn unlock(_buf: &[u8]) -> std::io::Result<()> {
-    Ok(())
-}
-
-/// Derive a ChaCha20 key from `password` and `salt` using Argon2id.
-///
-/// # Errors
-///
-/// Returns [`Error`] if the Argon2 computation fails or if locking the output
-/// buffer is not possible.
-///
-/// # Examples
-///
-/// ```
-/// use encryptor::{derive_key, Argon2Config};
-/// use secrecy::ExposeSecret;
-/// let cfg = Argon2Config::default();
-/// let key = derive_key("pw", b"0123456789abcdef", &cfg).unwrap();
-/// assert_eq!(key.expose_secret().len(), 32);
-/// ```
-pub fn derive_key(
-    password: &str,
-    salt: &[u8; 16],
-    cfg: &Argon2Config,
-) -> Result<SecretBox<[u8; 32]>> {
-    let params =
-        Params::new(cfg.mem_cost_kib, cfg.time_cost, cfg.parallelism, None).map_err(Error::from)?;
-    let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
-    let mut key_bytes = [0u8; 32];
-    lock(&key_bytes).map_err(Error::from)?;
-    argon2
-        .hash_password_into(password.as_bytes(), salt, &mut key_bytes)
-        .map_err(Error::from)?;
-    unlock(&key_bytes).map_err(Error::from)?;
-    Ok(SecretBox::new(Box::new(key_bytes)))
-}
-
-/// Rotate `v` left by `c` bits.
-///
-/// # Examples
-///
-/// ```ignore
-/// assert_eq!(encryptor::rotl(0x0123_4567, 8), 0x23_4567_01);
-/// ```
-fn rotl(v: u32, c: u32) -> u32 {
-    v.rotate_left(c)
-}
-
-/// Perform a single ChaCha quarter round on `state`.
-///
-/// # Examples
-///
-/// ```ignore
-/// let mut s = [0u32; 16];
-/// encryptor::quarter_round(&mut s, 0, 1, 2, 3);
-/// ```
-fn quarter_round(state: &mut [u32; 16], a: usize, b: usize, c: usize, d: usize) {
-    state[a] = state[a].wrapping_add(state[b]);
-    state[d] = rotl(state[d] ^ state[a], 16);
-    state[c] = state[c].wrapping_add(state[d]);
-    state[b] = rotl(state[b] ^ state[c], 12);
-    state[a] = state[a].wrapping_add(state[b]);
-    state[d] = rotl(state[d] ^ state[a], 8);
-    state[c] = state[c].wrapping_add(state[d]);
-    state[b] = rotl(state[b] ^ state[c], 7);
-}
-
-macro_rules! double_round {
-    ($state:expr) => {
-        quarter_round($state, 0, 4, 8, 12);
-        quarter_round($state, 1, 5, 9, 13);
-        quarter_round($state, 2, 6, 10, 14);
-        quarter_round($state, 3, 7, 11, 15);
-        quarter_round($state, 0, 5, 10, 15);
-        quarter_round($state, 1, 6, 11, 12);
-        quarter_round($state, 2, 7, 8, 13);
-        quarter_round($state, 3, 4, 9, 14);
-    };
-}
-
-#[inline(always)]
-/// XOR `src` into `dst` in place.
-///
-/// # Safety
-///
-/// This function is unsafe because it performs unchecked pointer arithmetic.
-///
-/// # Examples
-///
-/// ```ignore
-/// let mut data = [0u8; 4];
-/// let mask = [1u8; 4];
-/// unsafe { encryptor::xor_in_place(&mut data, &mask) };
-/// assert_eq!(data, mask);
-/// ```
-unsafe fn xor_in_place(dst: &mut [u8], src: &[u8]) {
-    let n = dst.len().min(src.len());
-    let d = dst.as_mut_ptr();
-    let s = src.as_ptr();
-    for i in 0..n {
-        // SAFETY: i < dst.len() and i < src.len()
-        *d.add(i) ^= *s.add(i);
-    }
-}
-
-#[inline(always)]
-/// Generate a ChaCha20 keystream block.
-///
-/// # Examples
-///
-/// ```ignore
-/// let key = [0u8; 32];
-/// let block = encryptor::chacha20_block_bytes(&key, 0, &[0u8; 12]);
-/// assert_eq!(block.len(), 64);
-/// ```
-fn chacha20_block_bytes(key_bytes: &[u8; 32], counter: u32, nonce: &[u8; 12]) -> [u8; 64] {
-    let constants: [u8; 16] = *b"expand 32-byte k";
-    let mut state = [0u32; 16];
-    for i in 0..4 {
-        state[i] = u32::from_le_bytes(constants[4 * i..4 * i + 4].try_into().unwrap());
-    }
-    for i in 0..8 {
-        state[4 + i] = u32::from_le_bytes(key_bytes[4 * i..4 * i + 4].try_into().unwrap());
-    }
-    state[12] = counter;
-    for i in 0..3 {
-        state[13 + i] = u32::from_le_bytes(nonce[4 * i..4 * i + 4].try_into().unwrap());
-    }
-    let mut working = state;
-    // 20 rounds
-    for _ in 0..10 {
-        double_round!(&mut working);
-    }
-    for i in 0..16 {
-        working[i] = working[i].wrapping_add(state[i]);
-    }
-    let mut block = [0u8; 64];
-    for i in 0..16 {
-        block[4 * i..4 * i + 4].copy_from_slice(&working[i].to_le_bytes());
-    }
-    working.zeroize();
-    block
-}
-
-/// Compute the ChaCha20 block keystream for the given counter and nonce.
-///
-/// # Examples
-/// ```
-/// use encryptor::{chacha20_block, derive_key, Argon2Config};
-/// let cfg = Argon2Config::default();
-/// let key = derive_key("pw", b"0123456789abcdef", &cfg).unwrap();
-/// let block = chacha20_block(&key, 0, &[0u8; 12]);
-/// assert_eq!(block.len(), 64);
-/// ```
-pub fn chacha20_block(key: &SecretBox<[u8; 32]>, counter: u32, nonce: &[u8; 12]) -> [u8; 64] {
-    chacha20_block_bytes(key.expose_secret(), counter, nonce)
-}
-
 use subtle::ConstantTimeEq;
+use zeroize::{Zeroize, Zeroizing};
 
-/// Perform a constant-time equality check.
+const PASSWORD_MAX_BYTES: usize = 1024;
+const PRIVATE_OUTPUT_MODE: u32 = 0o600;
+const PUBLIC_OUTPUT_MODE: u32 = 0o644;
+
+/// A validated UTF-8 password which zeroizes its owned storage on drop.
 ///
-/// # Examples
-///
-/// ```
-/// use encryptor::ct_eq;
-/// assert!(ct_eq(b"a", b"a"));
-/// assert!(!ct_eq(b"a", b"b"));
-/// ```
-pub fn ct_eq(a: &[u8], b: &[u8]) -> bool {
-    a.ct_eq(b).into()
+/// Password bytes are used exactly as provided, without trimming or Unicode
+/// normalization. Empty passwords and passwords longer than 1024 bytes are
+/// rejected.
+pub struct Password {
+    secret: SecretString,
 }
 
-/// Read an entire file while using the same code path on success or failure.
+impl Password {
+    /// Validate and own a password.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidPassword`] for an empty password or one longer
+    /// than 1024 UTF-8 bytes.
+    pub fn new(mut value: String) -> Result<Self> {
+        if value.is_empty() {
+            value.zeroize();
+            return Err(Error::InvalidPassword("password must not be empty"));
+        }
+        if value.len() > PASSWORD_MAX_BYTES {
+            value.zeroize();
+            return Err(Error::InvalidPassword("password exceeds 1024 UTF-8 bytes"));
+        }
+        Ok(Self {
+            secret: SecretString::from(value),
+        })
+    }
+
+    /// Compare two validated passwords without early exit on differing bytes.
+    pub fn matches(&self, other: &Self) -> bool {
+        let mut left = Zeroizing::new([0u8; PASSWORD_MAX_BYTES]);
+        let mut right = Zeroizing::new([0u8; PASSWORD_MAX_BYTES]);
+        let left_bytes = self.as_bytes();
+        let right_bytes = other.as_bytes();
+        left[..left_bytes.len()].copy_from_slice(left_bytes);
+        right[..right_bytes.len()].copy_from_slice(right_bytes);
+        let same_content = left.as_slice().ct_eq(right.as_slice());
+        let left_len = match u16::try_from(left_bytes.len()) {
+            Ok(length) => length,
+            Err(_) => return false,
+        };
+        let right_len = match u16::try_from(right_bytes.len()) {
+            Ok(length) => length,
+            Err(_) => return false,
+        };
+        bool::from(same_content & left_len.to_le_bytes().ct_eq(&right_len.to_le_bytes()))
+    }
+
+    fn as_bytes(&self) -> &[u8] {
+        self.secret.expose_secret().as_bytes()
+    }
+}
+
+/// An encrypted-file signing identity.
 ///
-/// This aims to keep timing similar for error and success cases but it is not a
-/// strong constant-time guarantee. True constant-time I/O would require
-/// operating system support and is outside the scope of this crate.
+/// The private seed is never exposed by the public API and is zeroized on drop.
+pub struct SigningIdentity {
+    seed: SecretBox<[u8; 32]>,
+}
+
+/// A strict Ed25519 verification key.
+pub struct VerificationKey {
+    key: VerifyingKey,
+}
+
+/// Options for file encryption.
+pub struct EncryptOptions<'a> {
+    signing_identity: Option<&'a SigningIdentity>,
+}
+
+impl<'a> EncryptOptions<'a> {
+    /// Encrypt without an external Ed25519 signature.
+    pub fn unsigned() -> Self {
+        Self {
+            signing_identity: None,
+        }
+    }
+
+    /// Encrypt and append an Ed25519ph signature.
+    pub fn signed(identity: &'a SigningIdentity) -> Self {
+        Self {
+            signing_identity: Some(identity),
+        }
+    }
+}
+
+/// Options for file decryption.
+pub struct DecryptOptions<'a> {
+    verification_key: Option<&'a VerificationKey>,
+}
+
+impl<'a> DecryptOptions<'a> {
+    /// Decrypt an unsigned envelope.
+    pub fn unsigned() -> Self {
+        Self {
+            verification_key: None,
+        }
+    }
+
+    /// Require and verify the envelope's Ed25519ph signature.
+    pub fn require_signature(key: &'a VerificationKey) -> Self {
+        Self {
+            verification_key: Some(key),
+        }
+    }
+}
+
+fn fill_random(output: &mut [u8]) -> Result<()> {
+    OsRng
+        .try_fill_bytes(output)
+        .map_err(|_| Error::EntropyFailure)
+}
+
+fn derive_key(password: &Password, salt: &[u8; 16]) -> Result<SecretBox<[u8; KEY_LEN]>> {
+    let params = Params::new(KDF_MEMORY_KIB, KDF_TIME, KDF_PARALLELISM, Some(KEY_LEN))?;
+    let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
+    let mut output = SecretBox::new(Box::new([0u8; KEY_LEN]));
+    argon2.hash_password_into(password.as_bytes(), salt, output.expose_secret_mut())?;
+    Ok(output)
+}
+
+fn read_exact<R: Read>(reader: &mut R, output: &mut [u8], operation: &'static str) -> Result<()> {
+    reader
+        .read_exact(output)
+        .map_err(|source| Error::io(operation, source))
+}
+
+fn write_all<W: Write>(writer: &mut W, input: &[u8], operation: &'static str) -> Result<()> {
+    writer
+        .write_all(input)
+        .map_err(|source| Error::io(operation, source))
+}
+
+fn ensure_eof(file: &mut File) -> Result<()> {
+    let mut extra = [0u8; 1];
+    let read = file
+        .read(&mut extra)
+        .map_err(|source| Error::io("checking input finality", source))?;
+    if read != 0 {
+        return Err(Error::InvalidFormat("unexpected trailing data"));
+    }
+    Ok(())
+}
+
+fn signature_digest(header: &FileHeader) -> Sha512 {
+    let mut digest = Sha512::new();
+    digest.update(SIGNATURE_DOMAIN);
+    digest.update(header.bytes());
+    digest
+}
+
+/// Inspect and preflight a CPV2 envelope without running Argon2 or decrypting.
 ///
 /// # Errors
 ///
-/// Returns [`Error`] if the file cannot be read.
-///
-/// # Examples
-///
-/// ```
-/// use encryptor::read_file_ct;
-/// use std::io::Write;
-/// let mut tmp = tempfile::NamedTempFile::new().unwrap();
-/// writeln!(tmp, "hello").unwrap();
-/// let data = read_file_ct(tmp.path()).unwrap();
-/// assert!(data.starts_with(b"hello"));
-/// ```
-pub fn read_file_ct(path: &Path) -> Result<Vec<u8>> {
-    let mut buf = Vec::new();
-    let dummy = [0u8; 1];
-    match File::open(path) {
-        Ok(mut f) => {
-            f.read_to_end(&mut buf).map_err(Error::from)?;
-        }
-        Err(e) => {
-            let mut empty = &dummy[..];
-            let _ = empty.read_to_end(&mut buf);
-            return Err(Error::from(e));
-        }
+/// Returns an error if the input is not a regular non-symlink file, the header
+/// is noncanonical, or its declared encoded size does not match the open file.
+pub fn inspect_envelope(input: &Path) -> Result<EnvelopeMetadata> {
+    let mut file = open_regular_nofollow(input)?;
+    let file_len = file
+        .metadata()
+        .map_err(|source| Error::io("reading encrypted input metadata", source))?
+        .len();
+    let mut bytes = [0u8; FILE_HEADER_LEN];
+    read_exact(&mut file, &mut bytes, "reading CPV2 header")?;
+    let metadata = EnvelopeMetadata::parse_header(&bytes)?;
+    if metadata.encoded_len()? != file_len {
+        return Err(Error::InvalidFormat(
+            "encoded length does not match CPV2 header",
+        ));
     }
-    Ok(buf)
+    Ok(metadata)
 }
 
-/// Encrypt or decrypt `data` returning a new `Vec<u8>`.
+/// Validate the complete canonical CPV2 framing of an in-memory byte slice.
 ///
-/// # Examples
+/// This read-only operation does not allocate based on encoded lengths, run
+/// Argon2, authenticate ciphertext, or release plaintext. It exists for format
+/// inspection and high-throughput parser fuzzing.
 ///
-/// ```
-/// use encryptor::{encrypt_decrypt, derive_key, Argon2Config};
-/// let cfg = Argon2Config::default();
-/// let key = derive_key("pw", b"0123456789abcdef", &cfg).unwrap();
-/// let nonce = [0u8; 12];
-/// let cipher = encrypt_decrypt(b"hello", &key, &nonce);
-/// let plain = encrypt_decrypt(&cipher, &key, &nonce);
-/// assert_eq!(plain, b"hello");
-/// ```
-pub fn encrypt_decrypt(data: &[u8], key: &SecretBox<[u8; 32]>, nonce: &[u8; 12]) -> Vec<u8> {
-    let mut out = data.to_vec();
-    let mut counter = 1u32;
-    encrypt_decrypt_in_place(&mut out, key, nonce, &mut counter);
-    out
+/// # Errors
+///
+/// Returns an error for noncanonical headers or records, length mismatch,
+/// missing finality, an invalid signature-trailer prefix, or trailing data.
+pub fn validate_envelope_structure(input: &[u8]) -> Result<EnvelopeMetadata> {
+    format::validate_structure(input)
 }
 
-/// Encrypt or decrypt `data` in place advancing `counter` as blocks are
-/// processed.
+/// Encrypt a regular file into a canonical CPV2 envelope.
 ///
-/// `counter` should start at `1` when encrypting/decrypting whole messages.
+/// The destination is atomically published without overwrite only after the
+/// complete envelope and optional signature have been generated and synced.
 ///
-/// # Examples
+/// # Errors
 ///
-/// ```
-/// use encryptor::{encrypt_decrypt_in_place, derive_key, Argon2Config};
-/// let cfg = Argon2Config::default();
-/// let key = derive_key("pw", b"0123456789abcdef", &cfg).unwrap();
-/// let nonce = [0u8; 12];
-/// let mut data = b"hello".to_vec();
-/// let mut enc_ctr = 1u32;
-/// encrypt_decrypt_in_place(&mut data, &key, &nonce, &mut enc_ctr);
-/// let mut dec_ctr = 1u32;
-/// encrypt_decrypt_in_place(&mut data, &key, &nonce, &mut dec_ctr);
-/// assert_eq!(data, b"hello");
-/// ```
-pub fn encrypt_decrypt_in_place(
-    data: &mut [u8],
-    key: &SecretBox<[u8; 32]>,
-    nonce: &[u8; 12],
-    counter: &mut u32,
-) {
-    let key_bytes = key.expose_secret();
-    let base = *counter;
-    let blocks = data.len().div_ceil(64);
-    data.par_chunks_mut(64).enumerate().for_each(|(i, chunk)| {
-        let ctr = base.wrapping_add(i as u32);
-        let mut ks = chacha20_block_bytes(key_bytes, ctr, nonce);
-        unsafe {
-            xor_in_place(chunk, &ks);
-        }
-        ks.zeroize();
-    });
-    *counter = base.wrapping_add(blocks as u32);
-}
-
-use ed25519_dalek::{Signer, SigningKey, VerifyingKey};
-
-/// Ed25519 private key type.
-pub type Ed25519PrivKey = SigningKey;
-/// Ed25519 public key type.
-pub type Ed25519PubKey = VerifyingKey;
-
-/// Length in bytes of an Ed25519 signature produced by [`sign`].
-///
-/// This is equivalent to [`ed25519_dalek::SIGNATURE_LENGTH`].
-pub const SIG_LEN: usize = ed25519_dalek::SIGNATURE_LENGTH;
-
-/// Sign `data` with `key` and return the detached signature bytes.
-///
-/// The returned byte array always has length [`SIG_LEN`].
-///
-/// # Examples
-///
-/// ```
-/// use encryptor::{sign, verify, SIG_LEN, Ed25519PrivKey};
-/// use ed25519_dalek::SigningKey;
-/// use rand::random;
-///
-/// let key_bytes: [u8; 32] = random();
-/// let key = SigningKey::from_bytes(&key_bytes);
-/// let msg = b"hello";
-/// let sig = sign(msg, &key);
-/// assert_eq!(sig.len(), SIG_LEN);
-/// assert!(verify(msg, &sig, &key.verifying_key()));
-/// ```
-pub fn sign(data: &[u8], priv_key: &Ed25519PrivKey) -> [u8; SIG_LEN] {
-    let sig = priv_key.sign(data);
-    sig.to_bytes()
-}
-
-/// Verify that `sig` is a valid Ed25519 signature on `data`.
-///
-/// Returns `true` if the signature is valid and `false` otherwise.
-///
-/// # Examples
-///
-/// ```
-/// use ed25519_dalek::SigningKey;
-/// use encryptor::{sign, verify};
-/// use rand::random;
-///
-/// let key_bytes: [u8; 32] = random();
-/// let key = SigningKey::from_bytes(&key_bytes);
-/// let msg = b"data";
-/// let sig = sign(msg, &key);
-/// assert!(verify(msg, &sig, &key.verifying_key()));
-/// ```
-pub fn verify(data: &[u8], sig: &[u8], pub_key: &Ed25519PubKey) -> bool {
-    if let Ok(sig) = ed25519_dalek::Signature::from_slice(sig) {
-        pub_key.verify_strict(data, &sig).is_ok()
-    } else {
-        false
-    }
-}
-
-/// Magic bytes identifying an encrypted Ed25519 private key file.
-pub const KEY_MAGIC: &[u8; 6] = b"EDEKV1";
-
-/// Length in bytes of an encrypted private key created by [`encrypt_priv_key`].
-pub const ENC_KEY_LEN: usize = KEY_MAGIC.len() + 4 + 4 + 4 + 16 + 12 + 32 + 16;
-
-/// Encrypt an Ed25519 seed using ChaCha20-Poly1305 with an Argon2 key.
-///
-/// # Examples
-///
-/// ```
-/// use encryptor::{encrypt_priv_key, decrypt_priv_key, Argon2Config};
-/// let seed = [0u8; 32];
-/// let cfg = Argon2Config::default();
-/// let enc = encrypt_priv_key(&seed, "pw", &cfg).unwrap();
-/// let dec = decrypt_priv_key(&enc, "pw").unwrap();
-/// assert_eq!(seed, dec);
-/// ```
-pub fn encrypt_priv_key(seed: &[u8; 32], password: &str, cfg: &Argon2Config) -> Result<Vec<u8>> {
-    use poly1305::{
-        universal_hash::{KeyInit, UniversalHash},
-        Block, Key, Poly1305,
-    };
-    use rand_core::{OsRng, TryRngCore};
+/// Returns an error for invalid paths, excessive file size, entropy or KDF
+/// failure, short or changing input, I/O failure, or an existing destination.
+pub fn encrypt_file(
+    input: &Path,
+    output: &Path,
+    password: &Password,
+    options: EncryptOptions<'_>,
+) -> Result<PublicationOutcome> {
+    let mut input_file = open_regular_nofollow(input)?;
+    let plaintext_len = input_file
+        .metadata()
+        .map_err(|source| Error::io("reading plaintext metadata", source))?
+        .len();
+    format::validate_plaintext_len(plaintext_len)?;
 
     let mut salt = [0u8; 16];
-    OsRng.try_fill_bytes(&mut salt).unwrap();
-    let mut nonce = [0u8; 12];
-    OsRng.try_fill_bytes(&mut nonce).unwrap();
-    let key = derive_key(password, &salt, cfg)?;
-
-    let mut counter = 1u32;
-    let mut cipher = seed.to_vec();
-    encrypt_decrypt_in_place(&mut cipher, &key, &nonce, &mut counter);
-
-    let mut block0 = chacha20_block(&key, 0, &nonce);
-    let mut r_bytes = [0u8; 16];
-    r_bytes.copy_from_slice(&block0[..16]);
-    let mut s_bytes = [0u8; 16];
-    s_bytes.copy_from_slice(&block0[16..32]);
-    r_bytes[3] &= 15;
-    r_bytes[7] &= 15;
-    r_bytes[11] &= 15;
-    r_bytes[15] &= 15;
-    r_bytes[4] &= 252;
-    r_bytes[8] &= 252;
-    r_bytes[12] &= 252;
-    let r = u128::from_le_bytes(r_bytes);
-    let s = u128::from_le_bytes(s_bytes);
-    block0.zeroize();
-    r_bytes.zeroize();
-    s_bytes.zeroize();
-
-    let mut key_bytes = [0u8; 32];
-    key_bytes[..16].copy_from_slice(&r.to_le_bytes());
-    key_bytes[16..].copy_from_slice(&s.to_le_bytes());
-    let mut poly = Poly1305::new(Key::from_slice(&key_bytes));
-    key_bytes.zeroize();
-    poly.update_padded(&[]);
-    poly.update_padded(&cipher);
-    let mut len_block = [0u8; 16];
-    len_block[8..].copy_from_slice(&(cipher.len() as u64).to_le_bytes());
-    poly.update(&[Block::clone_from_slice(&len_block)]);
-    let tag = poly.finalize();
-
-    let mut out = Vec::with_capacity(ENC_KEY_LEN);
-    out.extend_from_slice(KEY_MAGIC);
-    out.extend_from_slice(&cfg.mem_cost_kib.to_le_bytes());
-    out.extend_from_slice(&cfg.time_cost.to_le_bytes());
-    out.extend_from_slice(&cfg.parallelism.to_le_bytes());
-    out.extend_from_slice(&salt);
-    out.extend_from_slice(&nonce);
-    out.extend_from_slice(&cipher);
-    out.extend_from_slice(tag.as_slice());
-
-    cipher.zeroize();
+    let mut nonce_prefix = [0u8; 8];
+    fill_random(&mut salt)?;
+    fill_random(&mut nonce_prefix)?;
+    let header = FileHeader::new(
+        options.signing_identity.is_some(),
+        plaintext_len,
+        salt,
+        nonce_prefix,
+    )?;
     salt.zeroize();
-    nonce.zeroize();
+    nonce_prefix.zeroize();
+    let key = derive_key(password, &header.salt)?;
+    let count = record_count(plaintext_len)?;
+    let mut digest = options.signing_identity.map(|_| signature_digest(&header));
+    let mut atomic_output: Option<AtomicOutput> = None;
 
-    Ok(out)
+    for index_u64 in 0..count {
+        let index = u32::try_from(index_u64)
+            .map_err(|_| Error::LimitExceeded("record index does not fit u32"))?;
+        let record = RecordHeader::expected(index, plaintext_len)?;
+        let length = usize::try_from(record.length)
+            .map_err(|_| Error::LimitExceeded("record length does not fit usize"))?;
+        let mut buffer = Zeroizing::new(vec![0u8; length]);
+        read_exact(&mut input_file, &mut buffer, "reading plaintext record")?;
+        let nonce = header.nonce(index);
+        let aad = record.aad(&header);
+        let tag = seal_record(&mut buffer, key.expose_secret(), &nonce, &aad)?;
+
+        if atomic_output.is_none() {
+            let mut created = AtomicOutput::new(output, PRIVATE_OUTPUT_MODE)?;
+            write_all(&mut created, header.bytes(), "writing CPV2 header")?;
+            atomic_output = Some(created);
+        }
+        let writer = atomic_output
+            .as_mut()
+            .ok_or(Error::InvalidFormat("output state was not initialized"))?;
+        write_all(writer, record.bytes(), "writing record header")?;
+        write_all(writer, &buffer, "writing ciphertext record")?;
+        write_all(writer, &tag, "writing record tag")?;
+        if let Some(signature) = digest.as_mut() {
+            signature.update(record.bytes());
+            signature.update(&buffer);
+            signature.update(tag);
+        }
+        buffer.zeroize();
+    }
+
+    ensure_eof(&mut input_file)?;
+    let writer = atomic_output
+        .as_mut()
+        .ok_or(Error::InvalidFormat("CPV2 requires at least one record"))?;
+    if let (Some(identity), Some(mut signature_digest)) = (options.signing_identity, digest.take())
+    {
+        signature_digest.update(SIGNATURE_PREFIX);
+        let signing_key = SigningKey::from_bytes(identity.seed.expose_secret());
+        let signature = signing_key
+            .sign_prehashed(signature_digest, Some(SIGNATURE_CONTEXT))
+            .map_err(|_| Error::AuthenticationFailure)?;
+        write_all(writer, &SIGNATURE_PREFIX, "writing signature trailer")?;
+        write_all(writer, &signature.to_bytes(), "writing signature")?;
+    }
+    atomic_output
+        .take()
+        .ok_or(Error::InvalidFormat("output state was not initialized"))?
+        .commit()
 }
 
-/// Decrypt an encrypted Ed25519 seed.
+/// Decrypt a canonical CPV2 envelope with bounded memory.
 ///
-/// # Examples
+/// Each record is authenticated before plaintext is written to the private
+/// temporary output. The requested destination is published only after finality,
+/// exact structure, and any required Ed25519ph signature have been verified.
 ///
-/// ```
-/// use encryptor::{encrypt_priv_key, decrypt_priv_key, Argon2Config};
-/// let seed = [0u8; 32];
-/// let cfg = Argon2Config::default();
-/// let enc = encrypt_priv_key(&seed, "pw", &cfg).unwrap();
-/// let dec = decrypt_priv_key(&enc, "pw").unwrap();
-/// assert_eq!(seed, dec);
-/// ```
-pub fn decrypt_priv_key(data: &[u8], password: &str) -> Result<[u8; 32]> {
-    use poly1305::{
-        universal_hash::{KeyInit, UniversalHash},
-        Block, Key, Poly1305,
-    };
-
-    if data.len() != ENC_KEY_LEN {
-        return Err(Error::FormatError("Invalid key file length"));
+/// # Errors
+///
+/// Returns an error for malformed input, policy mismatch, authentication or
+/// signature failure, an existing destination, or any I/O/durability failure.
+pub fn decrypt_file(
+    input: &Path,
+    output: &Path,
+    password: &Password,
+    options: DecryptOptions<'_>,
+) -> Result<PublicationOutcome> {
+    let mut input_file = open_regular_nofollow(input)?;
+    let file_len = input_file
+        .metadata()
+        .map_err(|source| Error::io("reading encrypted input metadata", source))?
+        .len();
+    let mut header_bytes = [0u8; FILE_HEADER_LEN];
+    read_exact(&mut input_file, &mut header_bytes, "reading CPV2 header")?;
+    let header = FileHeader::parse(&header_bytes)?;
+    let expected_len = encoded_file_len(header.plaintext_len, header.signed)?;
+    if expected_len != file_len {
+        return Err(Error::InvalidFormat(
+            "encoded length does not match CPV2 header",
+        ));
     }
-    if !ct_eq(&data[..KEY_MAGIC.len()], KEY_MAGIC) {
-        return Err(Error::FormatError("Invalid key file"));
-    }
-
-    let mem_cost = u32::from_le_bytes(
-        data[KEY_MAGIC.len()..KEY_MAGIC.len() + 4]
-            .try_into()
-            .unwrap(),
-    );
-    let time_cost = u32::from_le_bytes(
-        data[KEY_MAGIC.len() + 4..KEY_MAGIC.len() + 8]
-            .try_into()
-            .unwrap(),
-    );
-    let parallelism = u32::from_le_bytes(
-        data[KEY_MAGIC.len() + 8..KEY_MAGIC.len() + 12]
-            .try_into()
-            .unwrap(),
-    );
-    let mut salt: [u8; 16] = data[KEY_MAGIC.len() + 12..KEY_MAGIC.len() + 28]
-        .try_into()
-        .unwrap();
-    let mut nonce: [u8; 12] = data[KEY_MAGIC.len() + 28..KEY_MAGIC.len() + 40]
-        .try_into()
-        .unwrap();
-    let mut cipher: [u8; 32] = data[KEY_MAGIC.len() + 40..KEY_MAGIC.len() + 72]
-        .try_into()
-        .unwrap();
-    let tag_bytes: [u8; 16] = data[KEY_MAGIC.len() + 72..KEY_MAGIC.len() + 88]
-        .try_into()
-        .unwrap();
-
-    let cfg = Argon2Config {
-        mem_cost_kib: mem_cost,
-        time_cost,
-        parallelism,
-    };
-    let key = derive_key(password, &salt, &cfg)?;
-
-    let mut block0 = chacha20_block(&key, 0, &nonce);
-    let mut r_bytes = [0u8; 16];
-    r_bytes.copy_from_slice(&block0[..16]);
-    let mut s_bytes = [0u8; 16];
-    s_bytes.copy_from_slice(&block0[16..32]);
-    r_bytes[3] &= 15;
-    r_bytes[7] &= 15;
-    r_bytes[11] &= 15;
-    r_bytes[15] &= 15;
-    r_bytes[4] &= 252;
-    r_bytes[8] &= 252;
-    r_bytes[12] &= 252;
-    let r = u128::from_le_bytes(r_bytes);
-    let s = u128::from_le_bytes(s_bytes);
-    block0.zeroize();
-    r_bytes.zeroize();
-    s_bytes.zeroize();
-
-    let mut key_bytes = [0u8; 32];
-    key_bytes[..16].copy_from_slice(&r.to_le_bytes());
-    key_bytes[16..].copy_from_slice(&s.to_le_bytes());
-    let mut poly = Poly1305::new(Key::from_slice(&key_bytes));
-    key_bytes.zeroize();
-    poly.update_padded(&[]);
-    poly.update_padded(&cipher);
-    let mut len_block = [0u8; 16];
-    len_block[8..].copy_from_slice(&(cipher.len() as u64).to_le_bytes());
-    poly.update(&[Block::clone_from_slice(&len_block)]);
-    let expected = poly.finalize();
-    if !ct_eq(expected.as_slice(), &tag_bytes) {
-        salt.zeroize();
-        nonce.zeroize();
-        cipher.zeroize();
-        return Err(Error::AuthFailure);
+    match (header.signed, options.verification_key) {
+        (true, None) => {
+            return Err(Error::InvalidFormat(
+                "signed envelope requires a verification key",
+            ));
+        }
+        (false, Some(_)) => {
+            return Err(Error::InvalidFormat(
+                "verification key supplied for an unsigned envelope",
+            ));
+        }
+        _ => {}
     }
 
-    let mut counter = 1u32;
-    encrypt_decrypt_in_place(&mut cipher, &key, &nonce, &mut counter);
+    let key = derive_key(password, &header.salt)?;
+    let count = record_count(header.plaintext_len)?;
+    let mut digest = header.signed.then(|| signature_digest(&header));
+    let mut atomic_output: Option<AtomicOutput> = None;
 
+    for index_u64 in 0..count {
+        let index = u32::try_from(index_u64)
+            .map_err(|_| Error::LimitExceeded("record index does not fit u32"))?;
+        let mut encoded_record_header = [0u8; format::RECORD_HEADER_LEN];
+        read_exact(
+            &mut input_file,
+            &mut encoded_record_header,
+            "reading record header",
+        )?;
+        let record =
+            RecordHeader::parse_expected(&encoded_record_header, index, header.plaintext_len)
+                .map_err(|_| Error::AuthenticationFailure)?;
+        let length = usize::try_from(record.length)
+            .map_err(|_| Error::LimitExceeded("record length does not fit usize"))?;
+        let mut buffer = Zeroizing::new(vec![0u8; length]);
+        let mut tag = [0u8; TAG_LEN];
+        read_exact(&mut input_file, &mut buffer, "reading ciphertext record")?;
+        read_exact(&mut input_file, &mut tag, "reading record tag")?;
+        if let Some(signature) = digest.as_mut() {
+            signature.update(encoded_record_header);
+            signature.update(&buffer);
+            signature.update(tag);
+        }
+        let nonce = header.nonce(index);
+        let aad = record.aad(&header);
+        open_record(&mut buffer, &tag, key.expose_secret(), &nonce, &aad)?;
+
+        if atomic_output.is_none() {
+            atomic_output = Some(AtomicOutput::new(output, PRIVATE_OUTPUT_MODE)?);
+        }
+        let writer = atomic_output
+            .as_mut()
+            .ok_or(Error::InvalidFormat("output state was not initialized"))?;
+        write_all(writer, &buffer, "writing authenticated plaintext record")?;
+        buffer.zeroize();
+        tag.zeroize();
+    }
+
+    if let (Some(key), Some(mut signature_digest)) = (options.verification_key, digest.take()) {
+        let mut prefix = [0u8; SIGNATURE_PREFIX.len()];
+        let mut signature_bytes = [0u8; 64];
+        read_exact(&mut input_file, &mut prefix, "reading signature trailer")?;
+        read_exact(&mut input_file, &mut signature_bytes, "reading signature")?;
+        if prefix != SIGNATURE_PREFIX {
+            return Err(Error::AuthenticationFailure);
+        }
+        signature_digest.update(SIGNATURE_PREFIX);
+        let signature = Signature::from_bytes(&signature_bytes);
+        key.key
+            .verify_prehashed_strict(signature_digest, Some(SIGNATURE_CONTEXT), &signature)
+            .map_err(|_| Error::AuthenticationFailure)?;
+    }
+    ensure_eof(&mut input_file)?;
+    atomic_output
+        .take()
+        .ok_or(Error::InvalidFormat("CPV2 requires at least one record"))?
+        .commit()
+}
+
+/// Generate one encrypted EDEKV2 Ed25519 key bundle.
+///
+/// The bundle contains the public key in its authenticated header and an
+/// encrypted 32-byte private seed. Existing files and symlinks are never
+/// replaced.
+///
+/// # Errors
+///
+/// Returns an error for entropy, KDF, I/O, or publication failure.
+pub fn generate_key_bundle(output: &Path, password: &Password) -> Result<PublicationOutcome> {
+    let mut seed = Zeroizing::new([0u8; 32]);
+    let mut salt = [0u8; 16];
+    let mut nonce = [0u8; 12];
+    fill_random(&mut seed[..])?;
+    fill_random(&mut salt)?;
+    fill_random(&mut nonce)?;
+
+    let signing_key = SigningKey::from_bytes(&seed);
+    let public_key = signing_key.verifying_key().to_bytes();
+    let header = KeyHeader::new(salt, nonce, public_key);
     salt.zeroize();
     nonce.zeroize();
+    let key = derive_key(password, &header.salt)?;
+    let mut encrypted_seed = Zeroizing::new(*seed);
+    seed.zeroize();
+    let tag = seal_record(
+        &mut encrypted_seed[..],
+        key.expose_secret(),
+        &header.nonce,
+        &header.aad(),
+    )?;
 
-    Ok(cipher)
+    let mut writer = AtomicOutput::new(output, PRIVATE_OUTPUT_MODE)?;
+    write_all(&mut writer, header.bytes(), "writing EDEKV2 header")?;
+    write_all(
+        &mut writer,
+        &encrypted_seed[..],
+        "writing encrypted private seed",
+    )?;
+    write_all(&mut writer, &tag, "writing key-bundle tag")?;
+    encrypted_seed.zeroize();
+    writer.commit()
+}
+
+fn read_key_bundle(path: &Path) -> Result<(KeyHeader, [u8; 32], [u8; TAG_LEN])> {
+    let mut file = open_regular_nofollow(path)?;
+    let len = file
+        .metadata()
+        .map_err(|source| Error::io("reading key-bundle metadata", source))?
+        .len();
+    if len != KEY_BUNDLE_LEN as u64 {
+        return Err(Error::InvalidFormat(
+            "EDEKV2 bundle length is not 144 bytes",
+        ));
+    }
+    let mut header_bytes = [0u8; KEY_HEADER_LEN];
+    let mut encrypted_seed = [0u8; 32];
+    let mut tag = [0u8; TAG_LEN];
+    read_exact(&mut file, &mut header_bytes, "reading EDEKV2 header")?;
+    read_exact(
+        &mut file,
+        &mut encrypted_seed,
+        "reading encrypted private seed",
+    )?;
+    read_exact(&mut file, &mut tag, "reading key-bundle tag")?;
+    ensure_eof(&mut file)?;
+    Ok((KeyHeader::parse(&header_bytes)?, encrypted_seed, tag))
+}
+
+/// Load and authenticate an encrypted EDEKV2 signing identity.
+///
+/// # Errors
+///
+/// Returns an authentication error for a wrong password, changed bundle, or a
+/// private seed that does not match the authenticated public key.
+pub fn load_signing_identity(path: &Path, password: &Password) -> Result<SigningIdentity> {
+    let (header, seed, mut tag) = read_key_bundle(path)?;
+    let mut seed = Zeroizing::new(seed);
+    let key = derive_key(password, &header.salt)?;
+    open_record(
+        &mut seed[..],
+        &tag,
+        key.expose_secret(),
+        &header.nonce,
+        &header.aad(),
+    )?;
+    tag.zeroize();
+    let reconstructed = SigningKey::from_bytes(&seed).verifying_key().to_bytes();
+    if !bool::from(reconstructed.ct_eq(&header.public_key)) {
+        seed.zeroize();
+        return Err(Error::AuthenticationFailure);
+    }
+    Ok(SigningIdentity {
+        seed: SecretBox::new(Box::new(*seed)),
+    })
+}
+
+/// Export the public key embedded in a canonical EDEKV2 bundle.
+///
+/// Public-key authenticity still depends on how the bundle itself was
+/// obtained. Exporting does not require or expose the private-key password.
+///
+/// # Errors
+///
+/// Returns an error for a malformed bundle, I/O failure, or existing output.
+pub fn export_public_key(bundle: &Path, output: &Path) -> Result<PublicationOutcome> {
+    let (header, mut encrypted_seed, mut tag) = read_key_bundle(bundle)?;
+    encrypted_seed.zeroize();
+    tag.zeroize();
+    VerifyingKey::from_bytes(&header.public_key)
+        .map_err(|_| Error::InvalidFormat("invalid Ed25519 public key in key bundle"))?;
+    let mut writer = AtomicOutput::new(output, PUBLIC_OUTPUT_MODE)?;
+    write_all(&mut writer, &header.public_key, "writing public key")?;
+    writer.commit()
+}
+
+/// Load an exact 32-byte Ed25519 verification key without following a symlink.
+///
+/// # Errors
+///
+/// Returns an error for an invalid file type, length, encoding, or I/O failure.
+pub fn load_verification_key(path: &Path) -> Result<VerificationKey> {
+    let mut file = open_regular_nofollow(path)?;
+    let len = file
+        .metadata()
+        .map_err(|source| Error::io("reading public-key metadata", source))?
+        .len();
+    if len != 32 {
+        return Err(Error::InvalidFormat("public key length is not 32 bytes"));
+    }
+    let mut bytes = [0u8; 32];
+    read_exact(&mut file, &mut bytes, "reading public key")?;
+    ensure_eof(&mut file)?;
+    let key = VerifyingKey::from_bytes(&bytes)
+        .map_err(|_| Error::InvalidFormat("invalid Ed25519 public key"))?;
+    Ok(VerificationKey { key })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::io;
+
+    fn password() -> Password {
+        Password::new("correct horse battery staple".to_owned()).expect("valid password")
+    }
+
+    fn encode_hex(bytes: &[u8]) -> String {
+        use std::fmt::Write as _;
+
+        let mut encoded = String::with_capacity(bytes.len() * 2);
+        for byte in bytes {
+            write!(&mut encoded, "{byte:02x}").expect("writing to a string cannot fail");
+        }
+        encoded
+    }
+
+    fn decode_hex(input: &str) -> Vec<u8> {
+        let bytes = input.trim().as_bytes();
+        assert_eq!(bytes.len() % 2, 0, "fixture hex must have byte pairs");
+        bytes
+            .chunks_exact(2)
+            .map(|pair| {
+                let high = (pair[0] as char).to_digit(16).expect("fixture hex");
+                let low = (pair[1] as char).to_digit(16).expect("fixture hex");
+                ((high << 4) | low) as u8
+            })
+            .collect()
+    }
+
+    fn deterministic_v2_fixtures() -> (Vec<u8>, Vec<u8>, Vec<u8>, [u8; 32]) {
+        let fixture_password = Password::new("fixture password".to_owned()).expect("password");
+        let signing_seed = [0x44; 32];
+        let signing_key = SigningKey::from_bytes(&signing_seed);
+        let public_key = signing_key.verifying_key().to_bytes();
+
+        let plaintext = b"golden CPV2 plaintext".to_vec();
+        let file_header = FileHeader::new(true, plaintext.len() as u64, [0x11; 16], [0x22; 8])
+            .expect("fixture file header");
+        let file_key = derive_key(&fixture_password, &file_header.salt).expect("fixture file key");
+        let record = RecordHeader::expected(0, plaintext.len() as u64).expect("fixture record");
+        let mut ciphertext = plaintext.clone();
+        let tag = seal_record(
+            &mut ciphertext,
+            file_key.expose_secret(),
+            &file_header.nonce(0),
+            &record.aad(&file_header),
+        )
+        .expect("fixture record seal");
+        let mut digest = signature_digest(&file_header);
+        digest.update(record.bytes());
+        digest.update(&ciphertext);
+        digest.update(tag);
+        digest.update(SIGNATURE_PREFIX);
+        let signature = signing_key
+            .sign_prehashed(digest, Some(SIGNATURE_CONTEXT))
+            .expect("fixture signature");
+        let mut envelope = Vec::new();
+        envelope.extend_from_slice(file_header.bytes());
+        envelope.extend_from_slice(record.bytes());
+        envelope.extend_from_slice(&ciphertext);
+        envelope.extend_from_slice(&tag);
+        envelope.extend_from_slice(&SIGNATURE_PREFIX);
+        envelope.extend_from_slice(&signature.to_bytes());
+
+        let key_header = KeyHeader::new([0x33; 16], [0x55; 12], public_key);
+        let bundle_key =
+            derive_key(&fixture_password, &key_header.salt).expect("fixture bundle key");
+        let mut encrypted_seed = signing_seed;
+        let bundle_tag = seal_record(
+            &mut encrypted_seed,
+            bundle_key.expose_secret(),
+            &key_header.nonce,
+            &key_header.aad(),
+        )
+        .expect("fixture bundle seal");
+        let mut bundle = Vec::new();
+        bundle.extend_from_slice(key_header.bytes());
+        bundle.extend_from_slice(&encrypted_seed);
+        bundle.extend_from_slice(&bundle_tag);
+
+        (envelope, bundle, plaintext, public_key)
+    }
+
+    #[test]
+    fn golden_v2_fixtures_are_stable_and_usable() {
+        let (generated_envelope, generated_bundle, plaintext, public_key) =
+            deterministic_v2_fixtures();
+        let envelope = decode_hex(include_str!("../tests/fixtures/cpv2-signed-v2.hex"));
+        let bundle = decode_hex(include_str!("../tests/fixtures/edekv2-v2.hex"));
+        assert_eq!(encode_hex(&generated_envelope), encode_hex(&envelope));
+        assert_eq!(encode_hex(&generated_bundle), encode_hex(&bundle));
+
+        let metadata = validate_envelope_structure(&envelope).expect("golden envelope structure");
+        assert!(metadata.is_signed());
+        assert_eq!(metadata.plaintext_len(), plaintext.len() as u64);
+
+        let directory = tempfile::tempdir().expect("fixture directory");
+        let envelope_path = directory.path().join("fixture.cpv2");
+        let bundle_path = directory.path().join("fixture.ekey");
+        let output_path = directory.path().join("fixture.out");
+        fs::write(&envelope_path, envelope).expect("golden envelope");
+        fs::write(&bundle_path, bundle).expect("golden bundle");
+        let verification_key = VerificationKey {
+            key: VerifyingKey::from_bytes(&public_key).expect("golden public key"),
+        };
+        let _ = decrypt_file(
+            &envelope_path,
+            &output_path,
+            &Password::new("fixture password".to_owned()).expect("fixture password"),
+            DecryptOptions::require_signature(&verification_key),
+        )
+        .expect("decrypt golden envelope");
+        assert_eq!(fs::read(output_path).expect("golden plaintext"), plaintext);
+        let identity = load_signing_identity(
+            &bundle_path,
+            &Password::new("fixture password".to_owned()).expect("fixture password"),
+        )
+        .expect("load golden signing identity");
+        assert_eq!(identity.seed.expose_secret(), &[0x44; 32]);
+    }
+
+    #[test]
+    fn password_policy_is_exact() {
+        assert!(Password::new(String::new()).is_err());
+        assert!(Password::new("x".repeat(1024)).is_ok());
+        assert!(Password::new("x".repeat(1025)).is_err());
+        let composed = Password::new("é".to_owned()).expect("composed");
+        let decomposed = Password::new("e\u{301}".to_owned()).expect("decomposed");
+        assert!(!composed.matches(&decomposed));
+    }
+
+    #[test]
+    fn exact_io_helpers_handle_fragmentation_and_propagate_failure() {
+        struct FragmentedReader<'a>(&'a [u8]);
+        impl Read for FragmentedReader<'_> {
+            fn read(&mut self, output: &mut [u8]) -> io::Result<usize> {
+                if output.is_empty() || self.0.is_empty() {
+                    return Ok(0);
+                }
+                output[0] = self.0[0];
+                self.0 = &self.0[1..];
+                Ok(1)
+            }
+        }
+
+        #[derive(Default)]
+        struct FragmentedWriter(Vec<u8>);
+        impl Write for FragmentedWriter {
+            fn write(&mut self, input: &[u8]) -> io::Result<usize> {
+                if input.is_empty() {
+                    return Ok(0);
+                }
+                self.0.push(input[0]);
+                Ok(1)
+            }
+
+            fn flush(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+        }
+
+        struct FailingReader;
+        impl Read for FailingReader {
+            fn read(&mut self, _output: &mut [u8]) -> io::Result<usize> {
+                Err(io::Error::other("injected read failure"))
+            }
+        }
+
+        let mut read = [0u8; 4];
+        read_exact(&mut FragmentedReader(b"data"), &mut read, "fragmented read")
+            .expect("short reads are retried");
+        assert_eq!(&read, b"data");
+
+        let mut writer = FragmentedWriter::default();
+        write_all(&mut writer, b"data", "fragmented write").expect("short writes are retried");
+        assert_eq!(writer.0, b"data");
+
+        assert!(matches!(
+            read_exact(&mut FailingReader, &mut read, "injected read"),
+            Err(Error::Io {
+                operation: "injected read",
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn unsigned_file_round_trip_and_no_overwrite() {
+        let directory = tempfile::tempdir().expect("temp directory");
+        let input = directory.path().join("input");
+        let encrypted = directory.path().join("encrypted");
+        let decrypted = directory.path().join("decrypted");
+        fs::write(&input, b"hello CPV2").expect("input");
+        let _ = encrypt_file(&input, &encrypted, &password(), EncryptOptions::unsigned())
+            .expect("encrypt");
+        let _ = decrypt_file(
+            &encrypted,
+            &decrypted,
+            &password(),
+            DecryptOptions::unsigned(),
+        )
+        .expect("decrypt");
+        assert_eq!(fs::read(&decrypted).expect("plaintext"), b"hello CPV2");
+        assert!(
+            encrypt_file(&input, &encrypted, &password(), EncryptOptions::unsigned(),).is_err()
+        );
+    }
 }
