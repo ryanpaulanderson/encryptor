@@ -1,6 +1,0 @@
-target
-**/target
-fuzz/in
-fuzz/out
-**/*.lock
-**/.git

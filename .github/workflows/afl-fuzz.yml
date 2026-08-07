@@ -1,51 +1,63 @@
-name: "AFL Fuzz Nightly"
+name: Weekly AFL fuzzing
 
 on:
   schedule:
-    - cron: '0 0 * * *'    # Runs daily at midnight UTC
+    - cron: "23 4 * * 0"
   workflow_dispatch:
+
+permissions: {}
 
 jobs:
   fuzz:
-    name: "Run AFL++ Fuzzer"
-    runs-on: ubuntu-latest
-    timeout-minutes: 80
-
+    name: ${{ matrix.target }} / 10 minutes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: header_afl
+            corpus: header
+          - target: structure_afl
+            corpus: structure
     steps:
-      - name: "Checkout repository"
-        uses: actions/checkout@v6
-
-      - name: "Install system dependencies"
+      - name: Checkout without persisted credentials
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Install exact Rust toolchain
+        run: rustup toolchain install 1.97.1 --profile minimal
+      - name: Install AFL runtime
         run: |
           sudo apt-get update
-          sudo apt-get install -y afl++ libssl-dev pkg-config uuid-runtime
-
-      - name: "Install Rust toolchain (stable)"
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: true
-
-      - name: "Install cargo-afl"
-        run: cargo +stable install cargo-afl --locked
-
-      - name: "Build AFL++ runtime"
-        run: cargo +stable afl config --build --force
-
-      - name: "Build AFL harness (stable)"
-        run: |
-          cd fuzz
-          cargo +stable afl build --release --features afl --bin encryptor_afl
-
-      - name: "Prepare seed corpus"
-        run: |
-          cd fuzz
-          mkdir -p in out
-          uuidgen > in/seed1
-
-      - name: "Run AFL++ fuzz for 1 hour"
+          sudo apt-get install --yes --no-install-recommends afl++
+      - name: Install locked cargo-afl 0.16.0
+        run: cargo +1.97.1 install cargo-afl --version '=0.16.0' --locked
+      - name: Build the real AFL target
+        run: >-
+          cargo +1.97.1 afl build
+          --manifest-path fuzz/Cargo.toml
+          --locked --features afl --release
+          --bin "${{ matrix.target }}"
+      - name: Run the committed corpus for ten minutes
         env:
-            AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES: "1"
-        run: |
-            cd fuzz
-            afl-fuzz -i in -o out -V 3600 -- ./target/release/encryptor_afl
+          AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES: "1"
+          AFL_SKIP_CPUFREQ: "1"
+        run: >-
+          afl-fuzz
+          -i "fuzz/corpus/${{ matrix.corpus }}"
+          -o "${{ runner.temp }}/afl-output"
+          -V 600 --
+          "fuzz/target/release/${{ matrix.target }}"
+      - name: Upload crashes and hangs for minimization
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: afl-${{ matrix.target }}-failures
+          path: |
+            ${{ runner.temp }}/afl-output/default/crashes
+            ${{ runner.temp }}/afl-output/default/hangs
+          if-no-files-found: ignore
+          retention-days: 7

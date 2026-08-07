@@ -1,0 +1,48 @@
+name: Memory and parser validation
+
+on:
+  schedule:
+    - cron: "7 6 * * 2"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  miri:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout without persisted credentials
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Install pinned nightly and Miri
+        run: rustup toolchain install nightly-2026-08-01 --profile minimal --component miri,rust-src
+      - name: Prepare Miri
+        run: cargo +nightly-2026-08-01 miri setup
+      - name: Exercise pure custom-crypto tests under Miri
+        run: >-
+          cargo +nightly-2026-08-01 miri test --lib crypto::tests --
+          --test-threads=1
+          --skip crypto::tests::matches_independent_rustcrypto_implementation
+
+  address-sanitizer:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout without persisted credentials
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Install pinned nightly
+        run: rustup toolchain install nightly-2026-08-01 --profile minimal
+      - name: Run parser and file-state tests with AddressSanitizer
+        env:
+          RUSTFLAGS: -Zsanitizer=address
+        run: >-
+          cargo +nightly-2026-08-01 test
+          --target x86_64-unknown-linux-gnu
+          --all-features --locked
+          --test format_properties --test file_workflows --test key_workflows

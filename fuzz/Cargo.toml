@@ -3,23 +3,24 @@ name = "encryptor-fuzz"
 version = "0.0.0"
 edition = "2021"
 publish = false
-
-[package.metadata]
-cargo-fuzz = true
+license = "GPL-3.0-or-later"
 
 [dependencies]
-libfuzzer-sys = "0.4"
-arbitrary      = "1.4"
-afl            = "0.15"
+afl = "0.16"
 
 [dependencies.encryptor]
 path = ".."
+version = "0.53.0"
 
 [features]
-# enable the AFL harness
 afl = []
 
 [[bin]]
-name = "encryptor_afl"
-path = "fuzz_targets/encryptor_fuzz.rs"
+name = "header_afl"
+path = "fuzz_targets/header_afl.rs"
+required-features = ["afl"]
+
+[[bin]]
+name = "structure_afl"
+path = "fuzz_targets/structure_afl.rs"
 required-features = ["afl"]

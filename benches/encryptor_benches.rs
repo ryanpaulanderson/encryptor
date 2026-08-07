@@ -1,98 +1,36 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use ed25519_dalek::{SigningKey, SECRET_KEY_LENGTH};
-use encryptor::{chacha20_block, encrypt_decrypt_in_place, sign, verify, Ed25519PrivKey};
-use rand_core::{OsRng, TryRngCore};
-use secrecy::SecretBox;
-use zeroize::Zeroize;
+use criterion::{criterion_group, criterion_main, Criterion};
+use encryptor::{encrypt_file, EncryptOptions, Password};
+use std::fs;
+use std::hint::black_box;
+use std::time::Duration;
 
-fn bench_chacha20_block(c: &mut Criterion) {
-    let key = SecretBox::new(Box::new([0u8; 32]));
-    let nonce = [0u8; 12];
-    c.bench_function("chacha20_block", |b| {
-        b.iter(|| {
-            black_box(chacha20_block(&key, 1, &nonce));
+fn file_encryption(c: &mut Criterion) {
+    let directory = tempfile::tempdir().expect("benchmark directory");
+    let input = directory.path().join("input");
+    fs::write(&input, vec![0x5a; 1_048_576]).expect("benchmark input");
+    let mut sequence = 0u64;
+
+    let mut group = c.benchmark_group("authenticated_file_workflow");
+    group.sample_size(10);
+    group.measurement_time(Duration::from_secs(20));
+    group.bench_function("encrypt_1mib_including_argon2", |bencher| {
+        bencher.iter(|| {
+            sequence += 1;
+            let output = directory.path().join(format!("output-{sequence}"));
+            let password = Password::new("benchmark password".to_owned()).expect("password");
+            let outcome = encrypt_file(
+                black_box(&input),
+                &output,
+                &password,
+                EncryptOptions::unsigned(),
+            )
+            .expect("benchmark encryption");
+            let _ = black_box(outcome);
+            fs::remove_file(output).expect("remove benchmark output");
         });
     });
+    group.finish();
 }
 
-fn bench_encrypt_decrypt_in_place(c: &mut Criterion) {
-    let key = SecretBox::new(Box::new([0u8; 32]));
-    let nonce = [0u8; 12];
-    let data = vec![0u8; 1024];
-    c.bench_function("encrypt_decrypt_in_place", |b| {
-        b.iter(|| {
-            let mut buf = data.clone();
-            let mut counter = 0u32;
-            encrypt_decrypt_in_place(&mut buf, &key, &nonce, &mut counter);
-            black_box(buf);
-        });
-    });
-}
-
-fn bench_keypair_generation(c: &mut Criterion) {
-    c.bench_function("keypair_generation", |b| {
-        b.iter(|| {
-            let mut buf = [0u8; SECRET_KEY_LENGTH];
-            OsRng.try_fill_bytes(&mut buf).unwrap();
-            let key: Ed25519PrivKey = SigningKey::from_bytes(&buf);
-            black_box(&key);
-            buf.zeroize();
-        });
-    });
-}
-
-fn bench_encrypt_with_keypair(c: &mut Criterion) {
-    let mut rng = OsRng;
-    let mut buf = [0u8; SECRET_KEY_LENGTH];
-    rng.try_fill_bytes(&mut buf).unwrap();
-    let sk = SigningKey::from_bytes(&buf);
-    buf.zeroize();
-    let key = SecretBox::new(Box::new([0u8; 32]));
-    let nonce = [0u8; 12];
-    let data = vec![0u8; 1024];
-    c.bench_function("encrypt_with_keypair", |b| {
-        b.iter(|| {
-            let mut buf = data.clone();
-            let mut counter = 1u32;
-            encrypt_decrypt_in_place(&mut buf, &key, &nonce, &mut counter);
-            let sig = sign(&buf, &sk);
-            black_box(sig);
-        });
-    });
-}
-
-fn bench_decrypt_with_keypair(c: &mut Criterion) {
-    let mut rng = OsRng;
-    let mut buf = [0u8; SECRET_KEY_LENGTH];
-    rng.try_fill_bytes(&mut buf).unwrap();
-    let sk = SigningKey::from_bytes(&buf);
-    buf.zeroize();
-    let pk = sk.verifying_key();
-    let key = SecretBox::new(Box::new([0u8; 32]));
-    let nonce = [0u8; 12];
-    let data = vec![0u8; 1024];
-    // pre-encrypt and sign so benchmark focuses on verify+decrypt
-    let mut cipher = data.clone();
-    let mut counter = 1u32;
-    encrypt_decrypt_in_place(&mut cipher, &key, &nonce, &mut counter);
-    let sig = sign(&cipher, &sk);
-    c.bench_function("decrypt_with_keypair", |b| {
-        b.iter(|| {
-            let mut buf = cipher.clone();
-            assert!(verify(&buf, &sig, &pk));
-            let mut ctr = 1u32;
-            encrypt_decrypt_in_place(&mut buf, &key, &nonce, &mut ctr);
-            black_box(buf);
-        });
-    });
-}
-
-criterion_group!(
-    benches,
-    bench_chacha20_block,
-    bench_encrypt_decrypt_in_place,
-    bench_keypair_generation,
-    bench_encrypt_with_keypair,
-    bench_decrypt_with_keypair
-);
+criterion_group!(benches, file_encryption);
 criterion_main!(benches);

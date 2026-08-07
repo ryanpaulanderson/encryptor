@@ -1,0 +1,44 @@
+name: Dependency intelligence
+
+on:
+  schedule:
+    - cron: "41 5 * * 1"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout without persisted credentials
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Install exact Rust toolchain
+        run: rustup toolchain install 1.97.1 --profile minimal
+      - name: Install exact locked scanners
+        run: |
+          cargo +1.97.1 install cargo-audit --version '=0.22.2' --locked
+          cargo +1.97.1 install cargo-deny --version '=0.20.2' --locked
+      - name: Refresh and audit both dependency graphs
+        run: |
+          cargo +1.97.1 fetch --locked
+          cargo +1.97.1 fetch --manifest-path fuzz/Cargo.toml --locked
+          cargo +1.97.1 audit --file Cargo.lock --deny warnings
+          cargo +1.97.1 audit --file fuzz/Cargo.lock --deny warnings
+          cargo +1.97.1 deny --manifest-path Cargo.toml --config deny.toml --locked check
+          cargo +1.97.1 deny --manifest-path fuzz/Cargo.toml --config deny.toml --locked check
+      - name: Emit seven-day digest-bound evidence
+        run: python3 scripts/write_security_evidence.py security-intelligence.json
+      - name: Validate the generated evidence
+        run: python3 scripts/validate_security_evidence.py security-intelligence.json
+      - name: Upload evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: security-intelligence
+          path: security-intelligence.json
+          if-no-files-found: error
+          retention-days: 7

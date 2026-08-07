@@ -1,141 +1,193 @@
-name: CD
+name: Release after merge
+
 on:
   push:
-    branches:
-      - main
-    paths:
-      - '**/Cargo.toml'
-      - '**/Cargo.lock'
-      - 'src/**'
-      - 'tests/**'
-      - 'benches/**'
+    branches: [main]
 
-permissions:
-  contents: write
+permissions: {}
+
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
+env:
+  RELEASE_RUST: "1.97.1"
+  CARGO_AUDIT_VERSION: "0.22.2"
+  CARGO_DENY_VERSION: "0.20.2"
+  CARGO_CYCLONEDX_VERSION: "0.5.9"
 
 jobs:
-  build-release:
-    runs-on: ubuntu-latest
+  validate:
+    name: Validate release version and source
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
     outputs:
-      upload_url: ${{ steps.create_release.outputs.upload_url }}
+      version: ${{ steps.version.outputs.version }}
+      release_needed: ${{ steps.version.outputs.release_needed }}
     steps:
-      - uses: actions/checkout@v6
+      - name: Checkout merged main without persisted credentials
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
-
-      - name: Set up Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          profile: minimal
-          components: rustfmt, clippy
-
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            vendor
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: Cache cargo-audit
-        id: cache-audit
-        uses: actions/cache@v4
-        with:
-          path: ~/.cargo/bin/cargo-audit
-          key: ${{ runner.os }}-cargo-audit-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: Install cargo-audit
-        if: steps.cache-audit.outputs.cache-hit != 'true'
-        run: cargo install --locked --version ^0.22 cargo-audit
-
-      - name: Format
-        run: cargo fmt -- --check
-
-      - name: Lint
-        run: cargo clippy -- -D warnings
-
-      - name: Test
-        run: RUST_TEST_THREADS=$(nproc) cargo test
-
-      - name: Security audit
-        run: cargo audit --deny warnings
-
-      - name: Build
-        run: cargo build --release
-
-      - name: Determine next version
+          persist-credentials: false
+      - name: Read the crate version and detect an existing release
         id: version
         run: |
-          latest_tag=$(git tag --list 'v*.*.*' --sort=-v:refname | head -n1)
-          if [ -z "$latest_tag" ]; then
-            version="0.1.0"
-          else
-            ver=${latest_tag#v}
-            major=${ver%%.*}
-            rest=${ver#*.}
-            minor=${rest%%.*}
-            minor=$((minor+1))
-            version="$major.$minor.0"
-          fi
+          version="$(python3 -c 'import pathlib,tomllib; print(tomllib.loads(pathlib.Path("Cargo.toml").read_text())["package"]["version"])')"
+          test -n "$version"
           echo "version=$version" >> "$GITHUB_OUTPUT"
-
-      - name: Archive binary
+          if git rev-parse --verify --quiet "refs/tags/v$version" >/dev/null; then
+            echo "release_needed=false" >> "$GITHUB_OUTPUT"
+            echo "v$version already exists; this merge does not create another release."
+          else
+            echo "release_needed=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Install exact Rust toolchain
+        if: steps.version.outputs.release_needed == 'true'
+        run: rustup toolchain install "$RELEASE_RUST" --profile minimal --component rustfmt,clippy
+      - name: Install exact dependency-policy tools
+        if: steps.version.outputs.release_needed == 'true'
         run: |
-          mkdir -p artifacts
-          cp target/release/chacha20_poly1305 artifacts/
-
-      - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
+          cargo "+$RELEASE_RUST" install cargo-audit --version "=$CARGO_AUDIT_VERSION" --locked
+          cargo "+$RELEASE_RUST" install cargo-deny --version "=$CARGO_DENY_VERSION" --locked
+          cargo "+$RELEASE_RUST" install cargo-cyclonedx --version "=$CARGO_CYCLONEDX_VERSION" --locked
+      - name: Run locked release checks
+        if: steps.version.outputs.release_needed == 'true'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: v${{ steps.version.outputs.version }}
-          release_name: v${{ steps.version.outputs.version }}
-          draft: false
-          prerelease: false
-
-      - name: Upload Release Asset
-        uses: actions/upload-release-asset@v1
+          RUSTDOCFLAGS: -D warnings
+        run: |
+          cargo "+$RELEASE_RUST" fmt --all -- --check
+          cargo "+$RELEASE_RUST" clippy --all-targets --all-features --locked -- -D warnings
+          cargo "+$RELEASE_RUST" test --all-features --locked
+          cargo "+$RELEASE_RUST" test --release --all-features --locked
+          cargo "+$RELEASE_RUST" doc --no-deps --all-features --locked
+          cargo "+$RELEASE_RUST" test --all-features --locked --offline
+          cargo "+$RELEASE_RUST" fmt --manifest-path fuzz/Cargo.toml -- --check
+          cargo "+$RELEASE_RUST" check --manifest-path fuzz/Cargo.toml --locked --features afl --bins
+          cargo "+$RELEASE_RUST" audit --file Cargo.lock --deny warnings
+          cargo "+$RELEASE_RUST" audit --file fuzz/Cargo.lock --deny warnings
+          cargo "+$RELEASE_RUST" deny --manifest-path Cargo.toml --config deny.toml --locked check
+          cargo "+$RELEASE_RUST" deny --manifest-path fuzz/Cargo.toml --config deny.toml --locked check
+          git diff --check
+      - name: Install the AFL release-smoke runtime
+        if: steps.version.outputs.release_needed == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends afl++
+          cargo "+$RELEASE_RUST" install cargo-afl --version '=0.16.0' --locked
+      - name: Build both real AFL targets
+        if: steps.version.outputs.release_needed == 'true'
+        run: >-
+          cargo "+$RELEASE_RUST" afl build
+          --manifest-path fuzz/Cargo.toml
+          --locked --features afl --release --bins
+      - name: Run the five-minute combined AFL release smoke
+        if: steps.version.outputs.release_needed == 'true'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES: "1"
+          AFL_SKIP_CPUFREQ: "1"
+        run: |
+          afl-fuzz -i fuzz/corpus/header -o "${RUNNER_TEMP}/header-out" -V 150 -- fuzz/target/release/header_afl
+          afl-fuzz -i fuzz/corpus/structure -o "${RUNNER_TEMP}/structure-out" -V 150 -- fuzz/target/release/structure_afl
+      - name: Generate the CycloneDX dependency inventory
+        if: steps.version.outputs.release_needed == 'true'
+        run: |
+          cargo "+$RELEASE_RUST" cyclonedx --format json --all-features
+          mv encryptor.cdx.json "chacha20_poly1305-v${{ steps.version.outputs.version }}.cdx.json"
+      - name: Upload the dependency inventory
+        if: steps.version.outputs.release_needed == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: artifacts/chacha20_poly1305
-          asset_name: chacha20_poly1305
-          asset_content_type: application/octet-stream
+          name: release-sbom
+          path: chacha20_poly1305-v${{ steps.version.outputs.version }}.cdx.json
+          if-no-files-found: error
+          retention-days: 7
 
-  build-macos:
-    needs: build-release
-    runs-on: macos-latest
+  build:
+    name: Build unsigned ${{ matrix.target }}
+    needs: validate
+    if: needs.validate.outputs.release_needed == 'true'
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
     strategy:
+      fail-fast: false
       matrix:
-        target: [x86_64-apple-darwin, aarch64-apple-darwin]
+        include:
+          - runner: ubuntu-24.04
+            target: x86_64-unknown-linux-musl
+          - runner: macos-15-intel
+            target: x86_64-apple-darwin
+          - runner: macos-15
+            target: aarch64-apple-darwin
+    env:
+      TARGET: ${{ matrix.target }}
+      VERSION: ${{ needs.validate.outputs.version }}
     steps:
-      - uses: actions/checkout@v6
+      - name: Checkout merged main without persisted credentials
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          fetch-depth: 0
-
-      - name: Set up Rust
-        uses: actions-rs/toolchain@v1
+          persist-credentials: false
+      - name: Install exact Rust toolchain and target
+        run: |
+          rustup toolchain install "$RELEASE_RUST" --profile minimal
+          rustup target add --toolchain "$RELEASE_RUST" "$TARGET"
+      - name: Install the Linux musl linker
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends musl-tools
+      - name: Build the locked release binary
+        run: cargo "+$RELEASE_RUST" build --release --locked --target "$TARGET" --bin chacha20_poly1305
+      - name: Exercise the exact release binary
+        run: >-
+          python3 scripts/release_e2e.py
+          "target/${TARGET}/release/chacha20_poly1305"
+          "$VERSION"
+      - name: Package the unsigned binary
+        run: |
+          archive="chacha20_poly1305-v${VERSION}-${TARGET}.tar.gz"
+          mkdir -p package dist
+          cp "target/${TARGET}/release/chacha20_poly1305" package/chacha20_poly1305
+          tar -C package -czf "dist/$archive" chacha20_poly1305
+      - name: Upload the exact platform archive
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          toolchain: stable
-          profile: minimal
+          name: release-${{ matrix.target }}
+          path: dist/chacha20_poly1305-v${{ needs.validate.outputs.version }}-${{ matrix.target }}.tar.gz
+          if-no-files-found: error
+          retention-days: 7
 
-      - name: Add target
-        run: rustup target add ${{ matrix.target }}
-
-      - name: Build
-        run: cargo build --release --target ${{ matrix.target }}
-
-      - name: Upload Release Asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  publish:
+    name: Publish GitHub release
+    needs: [validate, build]
+    if: needs.validate.outputs.release_needed == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ needs.validate.outputs.version }}
+    steps:
+      - name: Download the exact platform archives
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          upload_url: ${{ needs.build-release.outputs.upload_url }}
-          asset_path: target/${{ matrix.target }}/release/chacha20_poly1305
-          asset_name: chacha20_poly1305-${{ matrix.target }}
-          asset_content_type: application/octet-stream
+          pattern: release-*
+          merge-multiple: true
+          path: dist
+      - name: Generate and verify checksums
+        run: |
+          cd dist
+          sha256sum ./*.tar.gz ./*.json > SHA256SUMS
+          sha256sum --check SHA256SUMS
+      - name: Create the tag and release for this merged version
+        run: >-
+          gh release create "v$VERSION"
+          dist/*.tar.gz
+          dist/*.json
+          dist/SHA256SUMS
+          --repo "$GITHUB_REPOSITORY"
+          --target "$GITHUB_SHA"
+          --generate-notes
+          --title "v$VERSION"
