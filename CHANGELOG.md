@@ -1,10 +1,16 @@
 # Changelog
 
-## 0.53.0 - Unreleased
+## 0.54.0 - Unreleased
 
 This is an intentionally breaking security release. The crate version now
-matches the repository tag series.
+matches the repository tag series. Version 0.53.0 was never published: its
+release validation exposed missing committed AFL seed corpora, which are fixed
+here before the first CPV2/EDEKV2 release.
 
+- Update SHA-2, Poly1305, Ed25519, Criterion, AFL, CodeQL, checkout, and GitHub
+  Pages dependencies while preserving the v2 golden formats and signatures.
+- Commit canonical AFL seed corpora and keep the AFL crate and installed driver
+  on version 0.18.2 so the locked release smoke test can run.
 - Replace CPV1 with the bounded, record-authenticated CPV2 streaming format.
 - Replace EDEKV1 and multi-file key generation with one encrypted EDEKV2 key
   bundle plus explicit public-key export.
@@ -31,5 +37,5 @@ matches the repository tag series.
 
 - CPV1 and EDEKV1 are not readable.
 - The previous Rust public API and CLI KDF/hash flags are removed.
-- CPV2 and EDEKV2 become immutable once v0.53.0 is published; future semantic
+- CPV2 and EDEKV2 become immutable once v0.54.0 is published; future semantic
   cryptographic changes require new authenticated format versions.

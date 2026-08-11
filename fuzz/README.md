@@ -14,7 +14,7 @@ development-time differential oracle.
 Use exact locked dependencies:
 
 ```sh
-cargo install cargo-afl --locked --version '=0.16.0'
+cargo install cargo-afl --locked --version '=0.18.2'
 cargo afl build \
   --manifest-path fuzz/Cargo.toml \
   --locked \

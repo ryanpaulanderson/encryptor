@@ -22,13 +22,13 @@ fn run_with_input(arguments: &[&str], input: &[u8]) -> std::process::Output {
 }
 
 #[test]
-fn version_help_and_removed_flags_match_v053_contract() {
+fn version_help_and_removed_flags_match_v054_contract() {
     let version = Command::new(BIN)
         .arg("--version")
         .output()
         .expect("version");
     assert!(version.status.success());
-    assert!(String::from_utf8_lossy(&version.stdout).contains("0.53.0"));
+    assert!(String::from_utf8_lossy(&version.stdout).contains("0.54.0"));
 
     let help = Command::new(BIN).arg("--help").output().expect("help");
     let text = String::from_utf8_lossy(&help.stdout);

@@ -24,13 +24,13 @@ jobs:
       - name: Install exact Rust toolchain
         run: rustup toolchain install 1.97.1 --profile minimal
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@24c7eb380a2dc368f2d129e4c65e51d172983a1e # v4
+        uses: github/codeql-action/init@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
         with:
           languages: rust
       - name: Build locked targets
         run: cargo +1.97.1 build --all-targets --all-features --locked
       - name: Analyze without uploading from untrusted code
-        uses: github/codeql-action/analyze@5595ccaf912efad79be6eef63a5619ff05969be3 # v4
+        uses: github/codeql-action/analyze@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
         with:
           upload: never
 
@@ -49,10 +49,10 @@ jobs:
       - name: Install exact Rust toolchain
         run: rustup toolchain install 1.97.1 --profile minimal
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@24c7eb380a2dc368f2d129e4c65e51d172983a1e # v4
+        uses: github/codeql-action/init@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
         with:
           languages: rust
       - name: Build locked targets
         run: cargo +1.97.1 build --all-targets --all-features --locked
       - name: Analyze
-        uses: github/codeql-action/analyze@5595ccaf912efad79be6eef63a5619ff05969be3 # v4
+        uses: github/codeql-action/analyze@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6

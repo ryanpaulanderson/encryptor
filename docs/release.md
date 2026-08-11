@@ -23,7 +23,8 @@ For a release-worthy change, update `Cargo.toml` and summarize the release in
 retain an `Unreleased` heading because the merge date is not known in advance,
 and its date is not a publication gate. Ordinary merges which do not change the
 version do not create duplicate releases. The first reconciled release is
-`v0.53.0`.
+`v0.54.0`. The attempted v0.53.0 release did not publish because its release
+validation correctly failed on missing committed AFL seed corpora.
 
 ## Validation and publication
 
@@ -40,13 +41,13 @@ job-local `contents: write` permission. This separation reduces accidental
 publication mistakes; it is not independent approval when one person owns the
 repository.
 
-Release assets for v0.53.0 are:
+Release assets for v0.54.0 are:
 
 ```text
-chacha20_poly1305-v0.53.0-x86_64-unknown-linux-musl.tar.gz
-chacha20_poly1305-v0.53.0-x86_64-apple-darwin.tar.gz
-chacha20_poly1305-v0.53.0-aarch64-apple-darwin.tar.gz
-chacha20_poly1305-v0.53.0.cdx.json
+chacha20_poly1305-v0.54.0-x86_64-unknown-linux-musl.tar.gz
+chacha20_poly1305-v0.54.0-x86_64-apple-darwin.tar.gz
+chacha20_poly1305-v0.54.0-aarch64-apple-darwin.tar.gz
+chacha20_poly1305-v0.54.0.cdx.json
 SHA256SUMS
 ```
 
@@ -77,7 +78,7 @@ product-security claim is made.
 
 ## Incident and rollback
 
-Before v0.53.0, rollback is a complete revert of the unreleased v2 work. After
+Before v0.54.0, rollback is a complete revert of the unreleased v2 work. After
 publication, do not silently replace an asset or move the tag. Mark a
 compromised release, publish appropriate security guidance, and issue a new
 version. If format semantics must change, use a new authenticated format

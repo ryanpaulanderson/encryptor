@@ -2,7 +2,7 @@
 
 ## Status
 
-This threat model describes the v0.53.0 design. The project remains an
+This threat model describes the v0.54.0 design. The project remains an
 experimental custom cryptography implementation which has not been
 independently audited and is not suitable for important data.
 

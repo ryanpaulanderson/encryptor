@@ -116,14 +116,16 @@ fn compute_tag(
     one_time_key.copy_from_slice(&block_zero[..KEY_LEN]);
     block_zero.zeroize();
 
-    let mut poly1305 = Poly1305::new(Key::from_slice(&one_time_key));
+    let poly1305_key: &Key = (&one_time_key).into();
+    let mut poly1305 = Poly1305::new(poly1305_key);
     one_time_key.zeroize();
     poly1305.update_padded(aad);
     poly1305.update_padded(ciphertext);
     let mut lengths = [0u8; 16];
     lengths[..8].copy_from_slice(&aad_len.to_le_bytes());
     lengths[8..].copy_from_slice(&ciphertext_len.to_le_bytes());
-    poly1305.update(&[Block::clone_from_slice(&lengths)]);
+    let length_block = Block::from(lengths);
+    poly1305.update(&[length_block]);
     lengths.zeroize();
     Ok(poly1305.finalize().into())
 }
