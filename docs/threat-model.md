@@ -6,6 +6,43 @@ This threat model describes the v0.53.0 design. The project remains an
 experimental custom cryptography implementation which has not been
 independently audited and is not suitable for important data.
 
+## v0.54.0 dependency and release delta
+
+This release updates the reviewed inputs used to build, test, fuzz, analyze,
+document, and publish the existing CPV2/EDEKV2 implementation. It does not
+change the authenticated formats, algorithms, KDF profile, nonce allocation,
+record limits, signature domain, password rules, file-publication contract, or
+public error policy.
+
+- **Assets and attackers:** passwords, keys, plaintext, authenticated format
+  semantics, and release evidence remain the protected assets. The relevant
+  attackers are a compromised crate or GitHub Action publisher, a malicious
+  dependency update, an untrusted pull request, and attacker-controlled files
+  exercising changed library internals.
+- **Entry points and misuse cases:** new crate source, build scripts, procedural
+  macros, action bundles, the AFL toolchain, and the release workflow are the
+  changed entry points. Full action commit pins prevent mutable-tag selection;
+  locked Cargo graphs, source/license policy, fresh RustSec audits, independent
+  vectors, golden fixtures, and release-mode tests detect incompatible or
+  unreviewed changes. Pull-request jobs retain no release authority.
+- **Invariants and controls:** upgrades of SHA-2, Poly1305, and Ed25519 preserve
+  the exact CPV2/EDEKV2 bytes and verification behavior. Poly1305 tags remain
+  full-length and are compared before plaintext release. Ed25519ph remains
+  strictly domain-separated. AFL's crate, installed driver, real targets, and
+  committed nonempty seed corpora use one reviewed version so locked builds and
+  release smoke tests cannot silently select different instrumentation.
+- **Unchanged attack classes:** resource-exhaustion bounds, nonce uniqueness and
+  counter overflow checks, downgrade rejection, symlink/path-race defenses,
+  crash-residue handling, timing limitations, and ciphertext/signature tamper
+  handling are unchanged and continue to be exercised by the existing tests.
+- **Residual risk and validation:** upstream source and transitive dependencies
+  are not independently audited here, GitHub-hosted runners and the maintainer
+  account remain trusted, and passing checks cannot prove absence of supply-chain
+  or side-channel defects. Validation includes RFC and differential vectors,
+  golden fixtures, tamper and filesystem regressions, parser properties, both
+  locked dependency-policy graphs, workflow lint, both real AFL targets, and the
+  complete release-mode matrix.
+
 ## Assets
 
 - File and signing-key passwords.
