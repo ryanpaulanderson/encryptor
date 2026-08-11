@@ -81,6 +81,7 @@ jobs:
       - name: Compile real AFL targets
         run: |
           cargo +1.97.1 fmt --manifest-path fuzz/Cargo.toml -- --check
+          cargo +1.97.1 test --manifest-path fuzz/Cargo.toml --locked --lib
           cargo +1.97.1 check --manifest-path fuzz/Cargo.toml --locked --features afl --bins
 
   stable-canary:
