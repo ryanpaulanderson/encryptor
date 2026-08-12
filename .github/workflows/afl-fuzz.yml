@@ -29,11 +29,7 @@ jobs:
           persist-credentials: false
       - name: Install exact Rust toolchain
         run: rustup toolchain install 1.97.1 --profile minimal
-      - name: Install AFL runtime
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends afl++
-      - name: Install locked cargo-afl 0.18.2
+      - name: Install the exact cargo-afl runtime and driver
         run: cargo +1.97.1 install cargo-afl --version '=0.18.2' --locked
       - name: Build the real AFL target
         run: >-
@@ -46,7 +42,7 @@ jobs:
           AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES: "1"
           AFL_SKIP_CPUFREQ: "1"
         run: >-
-          afl-fuzz
+          cargo +1.97.1 afl fuzz
           -i "fuzz/corpus/${{ matrix.corpus }}"
           -o "${{ runner.temp }}/afl-output"
           -V 600 --

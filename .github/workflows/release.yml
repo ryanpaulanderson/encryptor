@@ -70,12 +70,9 @@ jobs:
           cargo "+$RELEASE_RUST" deny --manifest-path Cargo.toml --config deny.toml --locked check
           cargo "+$RELEASE_RUST" deny --manifest-path fuzz/Cargo.toml --config deny.toml --locked check
           git diff --check
-      - name: Install the AFL release-smoke runtime
+      - name: Install the pinned cargo-afl runtime and driver
         if: steps.version.outputs.release_needed == 'true'
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends afl++
-          cargo "+$RELEASE_RUST" install cargo-afl --version '=0.18.2' --locked
+        run: cargo "+$RELEASE_RUST" install cargo-afl --version '=0.18.2' --locked
       - name: Build both real AFL targets
         if: steps.version.outputs.release_needed == 'true'
         run: >-
@@ -85,12 +82,11 @@ jobs:
       - name: Run the five-minute combined AFL release smoke
         if: steps.version.outputs.release_needed == 'true'
         env:
-          AFL_DEBUG_CHILD: "1"
           AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES: "1"
           AFL_SKIP_CPUFREQ: "1"
         run: |
-          afl-fuzz -i fuzz/corpus/header -o "${RUNNER_TEMP}/header-out" -V 150 -- fuzz/target/release/header_afl
-          afl-fuzz -i fuzz/corpus/structure -o "${RUNNER_TEMP}/structure-out" -V 150 -- fuzz/target/release/structure_afl
+          cargo "+$RELEASE_RUST" afl fuzz -i fuzz/corpus/header -o "${RUNNER_TEMP}/header-out" -V 150 -- fuzz/target/release/header_afl
+          cargo "+$RELEASE_RUST" afl fuzz -i fuzz/corpus/structure -o "${RUNNER_TEMP}/structure-out" -V 150 -- fuzz/target/release/structure_afl
       - name: Generate the CycloneDX dependency inventory
         if: steps.version.outputs.release_needed == 'true'
         run: |
