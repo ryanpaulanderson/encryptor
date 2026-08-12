@@ -85,6 +85,7 @@ jobs:
       - name: Run the five-minute combined AFL release smoke
         if: steps.version.outputs.release_needed == 'true'
         env:
+          AFL_DEBUG_CHILD: "1"
           AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES: "1"
           AFL_SKIP_CPUFREQ: "1"
         run: |
