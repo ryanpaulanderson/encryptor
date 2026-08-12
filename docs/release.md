@@ -31,12 +31,13 @@ validation correctly failed on missing committed AFL seed corpora.
 The validation job uses Rust 1.97.1 and runs formatting, strict Clippy, debug
 and release tests, documentation warnings, an offline test after cache
 preparation, both real AFL targets with a five-minute combined release smoke,
-and audit/deny checks for both locked dependency graphs. The AFL smoke keeps the
-normal forkserver path but sets `AFL_DEBUG_CHILD=1` so target-process output is
-available when a forkserver startup fails; this output is untrusted diagnostic
-data and must be reviewed before being shared outside the repository. It also
-emits a CycloneDX dependency inventory. Separate read-only jobs build and
-exercise each platform archive.
+and audit/deny checks for both locked dependency graphs. The AFL smoke installs
+`cargo-afl` 0.18.2 with its lockfile and invokes `cargo afl fuzz`, so the
+instrumented targets and AFL++ driver come from the same reviewed runtime. It
+does not invoke the runner's unrelated system `afl-fuzz` binary, avoiding
+forkserver protocol mismatches between the target and driver. It also emits a
+CycloneDX dependency inventory. Separate read-only jobs build and exercise
+each platform archive.
 
 The final job does not check out or build repository code. It downloads those
 exact archives, creates and verifies `SHA256SUMS`, and publishes them with the
