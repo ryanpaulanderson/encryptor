@@ -1,20 +1,6 @@
 use afl::fuzz;
 use encryptor::{EnvelopeMetadata, KeyBundleMetadata};
-
-fn decode_corpus_seed(input: &[u8]) -> Option<Vec<u8>> {
-    let encoded = input.strip_prefix(b"hex:")?;
-    if encoded.len() % 2 != 0 {
-        return None;
-    }
-    encoded
-        .chunks_exact(2)
-        .map(|pair| {
-            let high = (pair[0] as char).to_digit(16)?;
-            let low = (pair[1] as char).to_digit(16)?;
-            u8::try_from((high << 4) | low).ok()
-        })
-        .collect()
-}
+use encryptor_fuzz::decode_corpus_seed;
 
 fn main() {
     fuzz!(|data: &[u8]| {

@@ -7,7 +7,7 @@
 > important, sensitive, or irreplaceable data.
 
 `encryptor` provides the `chacha20_poly1305` Unix command-line tool. Version
-0.53.0 uses the clean-break CPV2 streaming format, a fixed Argon2id profile,
+0.54.0 uses the clean-break CPV2 streaming format, a fixed Argon2id profile,
 authenticated records, optional Ed25519ph signatures, and atomic no-overwrite
 output publication. CPV1 and EDEKV1 files are deliberately unsupported.
 
@@ -84,7 +84,7 @@ of interoperability, not an audit or proof of side-channel safety.
 
 See [the CPV2/EDEKV2 format specification](docs/format-v2.md) and
 [the threat model](docs/threat-model.md) for the exact contract. The
-[v0.53.0 dependency review](docs/dependency-review.md) records the runtime,
+[v0.54.0 dependency review](docs/dependency-review.md) records the runtime,
 test-oracle, fuzz, license, build-script, proc-macro, unsafe, and toolchain
 impact decisions.
 

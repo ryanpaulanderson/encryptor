@@ -7,7 +7,7 @@ been independently audited, is not production-safe, and must not be used to
 protect important data. Maintenance and tests do not upgrade that assurance
 level.
 
-Before v0.53.0 is published, no released version is supported. After release,
+Before v0.54.0 is published, no released version is supported. After release,
 only the latest 0.x release receives best-effort security fixes. There is no
 response-time or remediation-time service-level agreement.
 

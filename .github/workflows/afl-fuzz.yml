@@ -24,7 +24,7 @@ jobs:
             corpus: structure
     steps:
       - name: Checkout without persisted credentials
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Install exact Rust toolchain
@@ -33,8 +33,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends afl++
-      - name: Install locked cargo-afl 0.16.0
-        run: cargo +1.97.1 install cargo-afl --version '=0.16.0' --locked
+      - name: Install locked cargo-afl 0.18.2
+        run: cargo +1.97.1 install cargo-afl --version '=0.18.2' --locked
       - name: Build the real AFL target
         run: >-
           cargo +1.97.1 afl build

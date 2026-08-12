@@ -14,7 +14,7 @@ development-time differential oracle.
 Use exact locked dependencies:
 
 ```sh
-cargo install cargo-afl --locked --version '=0.16.0'
+cargo install cargo-afl --locked --version '=0.18.2'
 cargo afl build \
   --manifest-path fuzz/Cargo.toml \
   --locked \
@@ -32,9 +32,9 @@ cargo afl fuzz -i fuzz/corpus/structure -o fuzz/out/structure -V 600 -- \
   fuzz/target/debug/structure_afl
 ```
 
-CI compiles both targets on relevant changes and runs each for ten minutes
-weekly. The release lane runs a bounded smoke test. Corpus files beginning
-with `hex:` are decoded by the harness so canonical NUL-containing CPV2/EDEKV2
-seeds remain reviewable as text. Every crash, timeout, or excessive-allocation
-input must be minimized and committed as an ordinary regression test before it
-is considered resolved.
+CI tests the corpus decoder, compiles both targets on relevant changes, and runs
+each target for ten minutes weekly. The release lane runs a bounded smoke test.
+Corpus files beginning with `hex:` are decoded by the harness so canonical
+NUL-containing CPV2/EDEKV2 seeds remain reviewable as newline-terminated text.
+Every crash, timeout, or excessive-allocation input must be minimized and
+committed as an ordinary regression test before it is considered resolved.
