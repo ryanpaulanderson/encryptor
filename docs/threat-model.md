@@ -143,6 +143,16 @@ This is deliberately operable by a sole maintainer and does not claim
 independent release approval or protection from compromise of the maintainer's
 GitHub account.
 
+The release AFL smoke sets `AFL_DEBUG_CHILD=1` to preserve target-process
+diagnostics when the AFL++ forkserver cannot start a child. This is a
+diagnostic-only control: it does not disable the forkserver, change corpus
+inputs, grant permissions, or alter artifact publication. Child output is
+attacker-influenced and must be treated as untrusted CI log data; the current
+targets do not receive passwords, keys, plaintext, or release credentials.
+There is no security-model change to the encrypted formats or release
+authority. Validation is a release-workflow rerun with inspection of the
+resulting child diagnostics.
+
 ## Misuse cases and fail-closed behavior
 
 - CPV1/EDEKV1, unknown versions/algorithms, noncanonical KDF profiles, unknown
