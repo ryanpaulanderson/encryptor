@@ -30,7 +30,7 @@ jobs:
       - name: Build locked targets
         run: cargo +1.97.1 build --all-targets --all-features --locked
       - name: Analyze without uploading from untrusted code
-        uses: github/codeql-action/analyze@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
+        uses: github/codeql-action/analyze@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
         with:
           upload: never
 
@@ -55,4 +55,4 @@ jobs:
       - name: Build locked targets
         run: cargo +1.97.1 build --all-targets --all-features --locked
       - name: Analyze
-        uses: github/codeql-action/analyze@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
+        uses: github/codeql-action/analyze@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
